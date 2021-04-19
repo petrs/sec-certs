@@ -17,6 +17,7 @@ from tabulate import tabulate
 
 from . import sanity
 from .constants import *
+from .cert_rules import rules_security_functional_components, rules_security_assurance_components
 
 plt.rcdefaults()
 
@@ -483,7 +484,10 @@ def plot_schemes_multi_line_graph(x_ticks, data, prominent_data, x_label, y_labe
 
         # change line type to prevent color repetitions
         num_lines_plotted += 1
-        color_index += 1
+        if color_index < len(GRAPHS_COLOR_PALETTE) - 1:
+            color_index += 1
+        else:
+            color_index = 0
 
     plt.rcParams.update({'font.size': 16})
     plt.legend(loc=2)
@@ -547,6 +551,7 @@ def filter_end_year(items: dict, end_year: int):
 
 def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_year=None):
     scheme_date = {}
+    hits_date = {}
     level_date = {}
     category_date = {}
     pp_date = {}
@@ -566,10 +571,35 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
 
     valid_in_years['active'] = {}
     valid_in_years['archived'] = {}
+    certs_in_years = {}
     for year in range(START_YEAR, END_YEAR + ARCHIVE_OFFSET):
         valid_in_years['active'][year] = []
         valid_in_years['archived'][year] = []
+        certs_in_years[year] = []
+    # preparation of keywords
+    target_keywords = {}
+    target_keywords['hashfnc'] = []
+    target_keywords['hashfnc'].append(['keywords_scan', 'rules_crypto_algs', 'SHA[-]*(?:160|224|256|384|512)'])
+    target_keywords['hashfnc'].append(['keywords_scan', 'rules_crypto_algs', 'SHA-1'])
+    target_keywords['hashfnc'].append(['keywords_scan', 'rules_crypto_algs', 'MD5'])
+    target_keywords['RSA'] = []
+    target_keywords['RSA'].append(
+        ['keywords_scan', 'rules_crypto_algs', 'RSA[- ]*(?:512|768|1024|1280|1536|2048|3072|4096|8192)'])
+    target_keywords['symciphers'] = []
+    target_keywords['symciphers'].append(['keywords_scan', 'rules_crypto_algs', 'AES[-]*(?:128|192|256|)'])
+    target_keywords['symciphers'].append(['keywords_scan', 'rules_crypto_algs', '[3T]?DES'])
+    # SAR
+    for item in rules_security_assurance_components:
+        item_name = item[:3]
+        target_keywords[item_name] = []
+        target_keywords[item_name].append(['keywords_scan', 'rules_security_assurance_components', item])
+    # SFR
+    for item in rules_security_functional_components:
+        item_name = item[:3]
+        target_keywords[item_name] = []
+        target_keywords[item_name].append(['keywords_scan', 'rules_security_functional_components', item])
 
+    # process all certificate items
     for cert_long_id in all_cert_items.keys():
         cert = all_cert_items[cert_long_id]
         if is_in_dict(cert, ['csv_scan', 'cc_certification_date']):
@@ -580,6 +610,7 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
 
             parsed_date = parser.parse(cert_date)
             cert_year = parsed_date.year
+            certs_in_years[cert_year].append(cert_long_id)
             # try to extract year of archivation (if provided)
             archived_year = None
             if is_in_dict(cert, ['csv_scan', 'cc_archived_date']):
@@ -629,6 +660,26 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
                     for year in range(START_YEAR, END_YEAR):
                         scheme_date[cc_scheme][year] = []
                 scheme_date[cc_scheme][cert_year].append(cert_long_id)
+
+
+            # keyword in years
+            for target_group in target_keywords.keys():
+                if target_group not in hits_date.keys():
+                    hits_date[target_group] = {}
+                for target_keyword in target_keywords[target_group]:
+                    if is_in_dict(cert, target_keyword):
+                        hits = get_item_from_dict(cert, target_keyword)
+                        for hit in hits:
+                        #for hit_group in hits:
+                        #    for hit in hits[hit_group]:
+                            hit = hit.replace(' ', '')
+                            hit = hit.replace('-', '')
+                            hit = hit.upper()
+                            if hit not in hits_date[target_group].keys():
+                                hits_date[target_group][hit] = {}
+                                for year in range(START_YEAR, END_YEAR):
+                                    hits_date[target_group][hit][year] = set()
+                            hits_date[target_group][hit][cert_year].add(cert_long_id)
 
             # extract manufacturer(s)
             if 'cc_manufacturer_simple_list' in cert['processed']:
@@ -701,9 +752,12 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
             top_manufacturers_date[manuf] = manufacturer_date[manuf]
 
     # filter only subset of years if required
+    plot_hits_date = {}
     if force_plot_end_year:
         years = np.arange(START_YEAR, force_plot_end_year + 1)
         plot_scheme_date = filter_end_year(scheme_date, force_plot_end_year)
+        for hits_group in hits_date.keys():
+            plot_hits_date[hits_group] = filter_end_year(hits_date[hits_group], force_plot_end_year)
         plot_level_date = filter_end_year(level_date, force_plot_end_year)
         plot_category_date = filter_end_year(category_date, force_plot_end_year)
         plot_pp_date = filter_end_year(pp_date, force_plot_end_year)
@@ -713,11 +767,25 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
         # plot all
         years = np.arange(START_YEAR, END_YEAR)
         plot_scheme_date = scheme_date
+        plot_hits_date = hits_date
         plot_level_date = level_date
         plot_category_date = category_date
         plot_pp_date = pp_date
         plot_labs_date = labs_date
         plot_top_manufacturers_date = top_manufacturers_date
+
+    plot_hits_date_normalized = {}
+    for item in plot_hits_date:
+        #hits_date[target_group][hit][cert_year].append(cert_long_id)
+        plot_hits_date_normalized = copy.deepcopy(plot_hits_date)
+        for group in plot_hits_date.keys():
+            for hit in plot_hits_date[group].keys():
+                for year in plot_hits_date[group][hit].keys():
+                    if len(plot_hits_date[group][hit][year]) > 0:
+                        plot_hits_date_normalized[group][hit][year] = [1] * int((len(plot_hits_date[group][hit][year]) / len(certs_in_years[year])) * 100)
+                    else:
+                        plot_hits_date_normalized[group][hit][year] = []
+
 
     sc_manufacturers = ['Gemalto', 'NXP Semiconductors', 'Samsung', 'STMicroelectronics', 'Oberthur Technologies',
                         'Infineon Technologies AG', 'G+D Mobile Security GmbH', 'ATMEL Smart Card ICs', 'Idemia',
@@ -725,7 +793,10 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
 
     # plot graphs showing cert. scheme and EAL in years
     plot_schemes_multi_graph(years, plot_scheme_date, ['DE', 'JP', 'FR', 'US', 'CA'], 'Year of issuance', 'Number of certificates issued', fig_label('CC certificates issuance frequency per scheme and year', filter_label), 'num_certs_in_years')
-    plot_schemes_multi_graph(years, plot_level_date, ['EAL4+', 'EAL5+','EAL2+', 'Protection Profile'], 'Year of issuance', 'Number of certificates issued', fig_label('Certificates issuance frequency per level and year', filter_label), 'num_certs_level_in_years')
+    for hits_group in plot_hits_date.keys():
+        plot_schemes_multi_graph(years, plot_hits_date[hits_group], [], 'Year of issuance', 'Number of certificates with hit', fig_label('CC certificates with keyword from group {} in years'.format(hits_group), filter_label), 'num_keywords_{}_certs_in_years'.format(hits_group))
+        plot_schemes_multi_graph(years, plot_hits_date_normalized[hits_group], [], 'Year of issuance', 'Fraction in % of certificates with hit ', fig_label('CC certificates with keyword from group {} in years in % of total'.format(hits_group), filter_label), 'fract_keywords_{}_certs_in_years_normalized'.format(hits_group))
+    plot_schemes_multi_graph(years, plot_level_date, ['EAL4+', 'EAL5+', 'EAL2+', 'Protection Profile'], 'Year of issuance', 'Number of certificates issued', fig_label('Certificates issuance frequency per level and year', filter_label), 'num_certs_level_in_years')
     plot_schemes_multi_graph(years, plot_category_date, [], 'Year of issuance', 'Number of certificates issued', fig_label('Category of certificates issued in given year', filter_label), 'num_certs_category_in_years')
     plot_schemes_multi_graph(years, plot_pp_date, [], 'Year of issuance', 'Number of certificates issued', fig_label('Certificates conforming to Protection Profile(s)', filter_label), 'num_certs_pp_in_years')
     plot_schemes_multi_graph(years, plot_labs_date, [], 'Year of issuance', 'Number of certificates issued', fig_label('Number of certificates certified by laboratory in given year', filter_label), 'num_certs_by_lab_in_years')
@@ -1226,3 +1297,33 @@ def filter_items(items: dict, filter_path: list, filter_value: str):
                 filtered_items[item_key] = items[item_key]
 
     return filtered_items
+
+
+def do_analyze_cpe_certs(cpe_to_certs: dict, certs_to_cpe: dict, all_cpe_items: dict, all_cert_items: dict):
+    # analysis of cpe versions (all items)
+    cpe_versions_count = {}
+    for cpe_item_key in all_cpe_items.keys():
+        version = all_cpe_items[cpe_item_key]['version']
+        cpe_versions_count[version] = cpe_versions_count.get(version, 0) + 1
+
+    print('Top 20 most common CPE versions')
+    cpe_versions_sorted = sorted(
+        cpe_versions_count.items(), key=operator.itemgetter(1), reverse=True)
+    for version in cpe_versions_sorted[0:20]:
+        print('{}={}'.format(version[0], version[1]))
+
+    # analyze all vendors
+    vendors = {}
+    for item_id in all_cpe_items.keys():
+        vendors[all_cpe_items[item_id]['vendor']] = vendors.get(all_cpe_items[item_id]['vendor'], 0) + 1
+    vendors_sorted_count = sorted(vendors.items(), key=operator.itemgetter(1), reverse=True)
+    print('Top 20 most common CPE vendors')
+    for vendor_id in vendors_sorted_count[0:20]:
+        print(vendor_id)
+
+    #
+    # analyze paired cpe to certs
+    for cert_key in certs_to_cpe.keys():
+        cert = all_cert_items[cert_key]
+        for cpe_key in certs_to_cpe[cert_key]:
+            print('{}\t{} ==> {}\t{}'.format(cert_key, cert['csv_scan']['cert_item_name'], cpe_key, all_cpe_items[cpe_key]['title']))
