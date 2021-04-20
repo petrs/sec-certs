@@ -830,10 +830,12 @@ class FIPSDataset(Dataset, ComplexSerializableType):
         for keyword, cert in keywords:
             self.certs[cert.dgst].pdf_scan.keywords = keyword
 
-    def match_algs(self, show_graph=False) -> Dict:
+    def match_algs(self) -> Dict:
         output = {}
+        cert: FIPSCertificate
         for cert in self.certs.values():
             output[cert.dgst] = FIPSCertificate.match_web_algs_to_pdf(cert)
+            cert.processed.unmatched_algs = output[cert.dgst]
 
         return output
 
@@ -843,7 +845,8 @@ class FIPSDataset(Dataset, ComplexSerializableType):
         self.policies_dir.mkdir(exist_ok=True)
 
         for cert_id in list(self.certs.keys()):
-            if not (self.policies_dir / f'{cert_id}.pdf').exists() or not self.certs[cert_id].state.txt_state:
+            if not (self.policies_dir / f'{cert_id}.pdf').exists() or (self.certs[cert_id]
+                                                                       and not self.certs[cert_id].state.txt_state):
                 sp_urls.append(
                     f"https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp{cert_id}.pdf")
                 sp_paths.append(self.policies_dir / f"{cert_id}.pdf")
@@ -865,7 +868,7 @@ class FIPSDataset(Dataset, ComplexSerializableType):
 
         logging.info(f"downloading {len(html_urls)} module html files")
         failed = cert_processing.process_parallel(FIPSCertificate.download_html_page, list(zip(html_urls, html_paths)),
-                                         constants.N_THREADS)
+                                                  constants.N_THREADS)
         failed = [c for c in failed if c]
 
         self.new_files += len(html_urls)
@@ -897,7 +900,7 @@ class FIPSDataset(Dataset, ComplexSerializableType):
             table = [x for x in html.find(
                 id='searchResultsTable').tbody.contents if x != '\n']
             for entry in table:
-                self.certs[entry.find('a').text] = {}
+                self.certs[entry.find('a').text] = None
 
         logger.info("Downloading required html files")
 
@@ -954,14 +957,15 @@ class FIPSDataset(Dataset, ComplexSerializableType):
                                       (self.fragments_dir / cert_id).with_suffix('.txt'), False, None, False),
                 cert, redo=redo)
 
-    def extract_certs_from_tables(self) -> List[Path]:
+    def extract_certs_from_tables(self, high_precision: bool) -> List[Path]:
         """
         Function that extracts algorithm IDs from tables in security policies files.
         :return: list of files that couldn't have been decoded
         """
         result = cert_processing.process_parallel(FIPSCertificate.analyze_tables,
-                                                  [cert for cert in self.certs.values() if
-                                                   not cert.state.tables_done and cert.state.txt_state],
+                                                  [(cert, high_precision) for cert in self.certs.values() if
+                                                   (
+                                                           not cert.state.tables_done or high_precision) and cert.state.txt_state],
                                                   constants.N_THREADS // 4,  # tabula already processes by parallel, so
                                                   # it's counterproductive to use all threads
                                                   use_threading=False)
@@ -1053,6 +1057,8 @@ class FIPSDataset(Dataset, ComplexSerializableType):
 
         for current_cert in self.certs.values():
             current_cert.processed.connections = []
+            current_cert.web_scan.connections = []
+            current_cert.pdf_scan.connections = []
             if not current_cert.state.file_status or not current_cert.processed.keywords:
                 continue
             if current_cert.processed.keywords['rules_cert_id'] == {}:
@@ -1060,20 +1066,33 @@ class FIPSDataset(Dataset, ComplexSerializableType):
             for rule in current_cert.processed.keywords['rules_cert_id']:
                 for cert in current_cert.processed.keywords['rules_cert_id'][rule]:
                     cert_id = ''.join(filter(str.isdigit, cert))
-                    if cert_id not in current_cert.processed.connections and validate_id(current_cert, cert_id):
+                    if cert_id not in current_cert.processed.connections and validate_id(current_cert, cert_id) \
+                            and cert_id != current_cert.cert_id:
                         current_cert.processed.connections.append(cert_id)
+                        current_cert.pdf_scan.connections.append(cert_id)
+
+            # We want connections parsed in caveat to bypass age check, because we are 100 % sure they are right
+            if current_cert.web_scan.mentioned_certs:
+                for item in current_cert.web_scan.mentioned_certs:
+                    cert_id = ''.join(filter(str.isdigit, item))
+                    if cert_id not in current_cert.processed.connections and cert_id != '':
+                        current_cert.processed.connections.append(cert_id)
+                        current_cert.web_scan.connections.append(cert_id)
 
     def finalize_results(self):
         self.unify_algorithms()
         self.remove_algorithms_from_extracted_data()
         self.validate_results()
 
-    def get_dot_graph(self, output_file_name: str):
+    def get_dot_graph(self, output_file_name: str, connection_list: str = 'processed', highlighted_vendor: str = 'Red Hat®, Inc.'):
         """
         Function that plots .dot graph of dependencies between certificates
         Certificates with at least one dependency are displayed in "{output_file_name}connections.pdf", remaining
         certificates are displayed in {output_file_name}single.pdf
+        :param highlighted_vendor: vendor whose certificates should be highlighted in red color
         :param output_file_name: prefix to "connections", "connections.pdf", "single" and "single.pdf"
+        :param connection_list: 'processed', 'web', or 'pdf' - plots a graph from this source
+                                default - processed
         """
         dot = Digraph(comment='Certificate ecosystem')
         single_dot = Digraph(comment='Modules with no dependencies')
@@ -1089,8 +1108,6 @@ class FIPSDataset(Dataset, ComplexSerializableType):
                     dot.attr('node', color='grey32')
                 if self.certs[current_key].web_scan.status == 'Historical':
                     dot.attr('node', color='gold3')
-            if self.certs[current_key].web_scan.vendor == "SUSE, LLC":
-                dot.attr('node', color='lightblue')
 
         def color_check(current_key):
             dot.attr('node', color='lightgreen')
@@ -1107,32 +1124,48 @@ class FIPSDataset(Dataset, ComplexSerializableType):
                            (self.certs[current_key].web_scan.module_name
                             if self.certs[current_key].web_scan.module_name else ''))
 
+        def get_processed_list():
+            if connection_list == "pdf":
+                cert_list = self.certs[key].pdf_scan.connections
+
+            elif connection_list == "web":
+                cert_list = self.certs[key].web_scan.connections
+
+            else:
+                cert_list = self.certs[key].processed.connections
+            return cert_list
+
         keys = 0
         edges = 0
 
-        highlighted_vendor = 'Red Hat®, Inc.'
         for key in self.certs:
-            if key != 'Not found' and self.certs[key].state.file_status:
-                if self.certs[key].processed.connections:
-                    color_check(key)
-                    keys += 1
-                else:
-                    single_dot.attr('node', color='lightblue')
-                    found_interesting_cert(key)
-                    single_dot.node(key, label=key + '\r\n' + self.certs[key].web_scan.vendor + (
-                        '\r\n' + self.certs[key].web_scan.module_name if self.certs[key].web_scan.module_name else ''))
+            if key == 'Not found' or not self.certs[key].state.file_status:
+                continue
+
+            processed = get_processed_list()
+
+            if processed:
+                color_check(key)
+                keys += 1
+            else:
+                single_dot.attr('node', color='lightblue')
+                found_interesting_cert(key)
+                single_dot.node(key, label=key + '\r\n' + self.certs[key].web_scan.vendor + (
+                    '\r\n' + self.certs[key].web_scan.module_name if self.certs[key].web_scan.module_name else ''))
 
         for key in self.certs:
-            if key != 'Not found' and self.certs[key].state.file_status:
-                for conn in self.certs[key].processed.connections:
-                    color_check(conn)
-                    dot.edge(key, conn)
-                    edges += 1
+            if key == 'Not found' or not self.certs[key].state.file_status:
+                continue
+            processed = get_processed_list()
+            for conn in processed:
+                color_check(conn)
+                dot.edge(key, conn)
+                edges += 1
 
-        logging.info(f"rendering {keys} keys and {edges} edges")
+        logging.info(f"rendering for {connection_list}: {keys} keys and {edges} edges")
 
-        dot.render(str(output_file_name) + '_connections', view=True)
-        single_dot.render(str(output_file_name) + '_single', view=True)
+        dot.render(self.root_dir / (str(output_file_name) + '_connections'), view=True)
+        single_dot.render(self.root_dir / (str(output_file_name) + '_single'), view=True)
 
     def to_dict(self):
         return {'timestamp': self.timestamp, 'sha256_digest': self.sha256_digest,
@@ -1169,6 +1202,49 @@ class FIPSDataset(Dataset, ComplexSerializableType):
             vendors[prefix] = list(a)
 
         return vendors
+
+    def find_certs_with_different_algorithm_vendors(self) -> Dict:
+        cert: FIPSCertificate
+        mapped = {}
+        for cert in self.certs.values():
+            mapped[cert.dgst] = 0
+            for alg in cert.web_scan.algorithms:
+                if not "Name" in alg:
+                    continue
+                alg_certs = alg["Certificate"]
+                alg_name = alg["Name"]
+                for alg_cert in alg_certs:
+                    if 'C' in alg_cert:
+                        alg_name = "C"
+                    elif 'A' in alg_cert:
+                        alg_name = "A"
+                    found = self.algorithms[''.join(filter(str.isdigit, alg_cert))]
+                    found_cert: FIPSCertificate.Algorithm
+                    for found_cert in found:
+                        if alg_name == found_cert.type and \
+                                FIPSCertificate.get_compare(cert.web_scan.vendor) != FIPSCertificate.get_compare(
+                            found_cert.vendor):
+                            mapped[cert.dgst] += 1
+                            break
+
+        mapped = {k: v for k, v in mapped.items() if v != 0}
+        mapped = {k: v for k, v in sorted(mapped.items(), key=lambda item: item[1], reverse=True)}
+
+        logger.info(json.dumps({k: mapped[k] for k in list(mapped)[:10]}, indent=4))
+        logger.info(f"Max: {max(mapped.values())}")
+        logger.info(f"Average: {sum(mapped.values()) / len(mapped)}")
+
+        return mapped
+
+    def plot_graphs(self):
+        self.get_dot_graph('full_graph')
+        self.get_dot_graph('web_only_graph', 'web')
+        self.get_dot_graph('pdf_only_graph', 'pdf')
+
+    def clean_empty_entries(self):
+        cert: FIPSCertificate
+        for cert in self.certs.values():
+            cert.clean_empty_entries()
 
 
 class FIPSAlgorithmDataset(Dataset, ComplexSerializableType):
