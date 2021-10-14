@@ -17,7 +17,8 @@ from tabulate import tabulate
 
 from . import sanity
 from .constants import *
-from .cert_rules import rules_security_functional_components, rules_security_assurance_components
+from .cert_rules import rules_security_functional_components, rules_security_assurance_components, rules_cc_claims
+from .cert_rules import rules_javacard
 
 plt.rcdefaults()
 
@@ -613,6 +614,17 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
         item_name = item[:3]
         target_keywords[item_name] = []
         target_keywords[item_name].append(['keywords_scan', 'rules_security_functional_components', item])
+    # CC claims
+    for item in rules_cc_claims:
+        item_name = item[:item.find('\\.')]
+        target_keywords[item_name] = []
+        target_keywords[item_name].append(['keywords_scan', 'rules_cc_claims', item])
+    # JavaCard versions
+    target_keywords['javacard'] = []
+    target_keywords['javacard'].append(['keywords_scan', 'rules_javacard', r'(?:Java Card|JavaCard) [2-3]\.[0-9](?:\.[0-9]|)'])
+    target_keywords['javacard'].append(['keywords_scan', 'rules_javacard',  r'(?:Java Card|JavaCard) \(version [2-3]\.[0-9](?:\.[0-9]|)\)'])
+
+
 
     # process all certificate items
     for cert_long_id in all_cert_items.keys():
@@ -685,11 +697,16 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
                     if is_in_dict(cert, target_keyword):
                         hits = get_item_from_dict(cert, target_keyword)
                         for hit in hits:
-                        #for hit_group in hits:
-                        #    for hit in hits[hit_group]:
                             hit = hit.replace(' ', '')
                             hit = hit.replace('-', '')
                             hit = hit.upper()
+
+                            # replace all SARs and SFRs label with longer name
+                            if hit.find('.') != -1:
+                                hit_prefix = hit[:hit.find('.')]
+                                if hit_prefix in SAR_string_mapping.keys():
+                                    hit = '{}: {}'.format(hit, SAR_string_mapping[hit_prefix])
+
                             if hit not in hits_date[target_group].keys():
                                 hits_date[target_group][hit] = {}
                                 for year in range(START_YEAR, END_YEAR):
@@ -766,6 +783,7 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
         if manuf in top_manufacturers:
             top_manufacturers_date[manuf] = manufacturer_date[manuf]
 
+
     # filter only subset of years if required
     plot_hits_date = {}
     if force_plot_end_year:
@@ -791,7 +809,6 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
 
     plot_hits_date_normalized = {}
     for item in plot_hits_date:
-        #hits_date[target_group][hit][cert_year].append(cert_long_id)
         plot_hits_date_normalized = copy.deepcopy(plot_hits_date)
         for group in plot_hits_date.keys():
             for hit in plot_hits_date[group].keys():
@@ -805,6 +822,8 @@ def analyze_cert_years_frequency(all_cert_items, filter_label, force_plot_end_ye
     sc_manufacturers = ['Gemalto', 'NXP Semiconductors', 'Samsung', 'STMicroelectronics', 'Oberthur Technologies',
                         'Infineon Technologies AG', 'G+D Mobile Security GmbH', 'ATMEL Smart Card ICs', 'Idemia',
                         'Athena Smartcard', 'Renesas', 'Philips Semiconductors GmbH', 'Oberthur Card Systems']
+
+
 
     # plot graphs showing cert. scheme and EAL in years
     plot_schemes_multi_graph(years, plot_scheme_date, ['DE', 'JP', 'FR', 'US', 'CA'], 'Year of issuance', 'Number of certificates issued', fig_label('CC certificates issuance frequency per scheme and year', filter_label), 'num_certs_in_years')
@@ -1023,15 +1042,19 @@ def generate_dot_graphs(all_items_found, filter_label, highlight_certs_id=None):
     # link between device and its javacard version
     print_dot_graph(['rules_javacard'], all_items_found, filter_label, 'cert_javacard_graph.dot', False, True, highlight_certs_id)
 
+    # link between certificates and their protection profiles based on csv_scan
+    #print_dot_graph(['rules_javacard'], all_items_found, filter_label, 'cert_javacard_graph.dot', False, False, highlight_certs_id)
+
     #    print_dot_graph(['rules_security_level'], all_items_found, filter_label, 'cert_security_level_graph.dot', True)
     #    print_dot_graph(['rules_crypto_libs'], all_items_found, filter_label, 'cert_crypto_libs_graph.dot', False)
     #    print_dot_graph(['rules_vendor'], all_items_found, filter_label, 'rules_vendor.dot', False)
     #    print_dot_graph(['rules_crypto_algs'], all_items_found, filter_label, 'rules_crypto_algs.dot', False)
-    #    print_dot_graph(['rules_protection_profiles'], all_items_found, filter_label, 'rules_protection_profiles.dot', False)
+    print_dot_graph(['rules_protection_profiles'], all_items_found, filter_label, 'rules_protection_profiles.dot',
+                    True, False, highlight_certs_id)
     #    print_dot_graph(['rules_defenses'], all_items_found, filter_label, 'rules_defenses.dot', False)
 
 
-def do_all_analysis(all_cert_items, filter_label, highlight_certs_id = None):
+def do_all_analysis(all_cert_items, filter_label, highlight_certs_id=None):
     analyze_cert_years_frequency(all_cert_items, filter_label)
     analyze_references_graph(['rules_cert_id'], all_cert_items, filter_label)
     analyze_eal_frequency(all_cert_items, filter_label)
@@ -1337,10 +1360,26 @@ def do_analyze_cpe_certs(cpe_to_certs: dict, certs_to_cpe: dict, all_cpe_items: 
     print('Top 20 most common CPE vendors')
     for vendor_id in vendors_sorted_count[0:20]:
         print(vendor_id)
+    # print('Short name vendors')
+    # for vendor_id in vendors_sorted_count:
+    #     if len(vendor_id[0]) <= 3:
+    #         print(vendor_id)
 
-    #
+
+
     # analyze paired cpe to certs
+    single_match_certs_cpe = {}
     for cert_key in certs_to_cpe.keys():
         cert = all_cert_items[cert_key]
         for cpe_key in certs_to_cpe[cert_key]:
-            print('{}\t{} ==> {}\t{}'.format(cert_key, cert['csv_scan']['cert_item_name'], cpe_key, all_cpe_items[cpe_key]['title']))
+            print('{}\t{} ==> {}\t{}'.format(cert_key, cert['csv_scan']['cert_item_name'], cpe_key,
+                                             all_cpe_items[cpe_key]['title']))
+            if len(certs_to_cpe[cert_key]) == 1:  # print only matches with single item
+                if len(cpe_to_certs[cpe_key]) == 1:
+                    single_match_certs_cpe[cert_key] = cpe_key
+                    #print('{}\t{} ==> {}\t{}'.format(cert_key, cert['csv_scan']['cert_item_name'], cpe_key, all_cpe_items[cpe_key]['title']))
+                #else:
+                    #print('{} matches multiple certificates'.format(cpe_key))
+
+    print('Number of certificates with single matching CPE = {}'.format(len(single_match_certs_cpe.keys())))
+    return single_match_certs_cpe
