@@ -45,6 +45,33 @@ The following steps will do a full extraction and analysis of CC certificates:
      and other large graphs use Chrome to display as Adobe Acrobat Reader will fail to show whole graph. 
 
 
+### Searching for all certificates potentially affecting given one
+Finds all certificates directly or indirectly referenced by the provided one ()
+ 
+Example 1: Estonia estID ([ANSSI-CC-2013/55](https://www.commoncriteriaportal.org/files/epfiles/Correctif%20du%20Rapport%20ANSSI-CC-2013_55.pdf))
+```
+python process_certificates.py --do-find-affecting ANSSI-CC-2013/55 <dir>
+```
+
+Example 2: eTravel v2.2 EAC/BAC on MultiApp v4.0.1 platform with Filter Set 1.0 version 1.0 ([ANSSI-CC-2020/44 ](https://www.ssi.gouv.fr/uploads/2020/12/anssi-cible-cc-2020_44en.pdf))
+```
+python process_certificates.py --do-find-affecting ANSSI-CC-2020/44 <dir>
+```
+
+### Searching for all certificates potentially affected by the provided ones 
+Finds all certificates directly or indirectly referencing the the provided one or more certificates
+
+Example: Infineon Security Controller M7892 B11 ([BSI-DSZ-CC-0782-2012](https://www.commoncriteriaportal.org/files/epfiles/0782a_pdf.pdf))
+```
+python process_certificates.py --do-find-affected BSI-DSZ-CC-0782-2012 <dir>
+```
+
+Example: ROCA-vulnerable certificates from eIDAS ID163484 report 
+```
+python process_certificates.py --do-find-affected BSI-DSZ-CC-0833-2013 --do-find-affected BSI-DSZ-CC-0921-2014 <dir>
+```
+
+
 ## Extending the analysis
 
 The analysis can be extended in several ways:
