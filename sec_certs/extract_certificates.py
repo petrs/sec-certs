@@ -2468,8 +2468,8 @@ def build_pp_id_mapping(all_pp_items):
     return pp_id_mapping
 
 
-def process_certificates_data(all_cert_items, all_pp_items):
-    print('\n\nExtracting useful info from collated files ***')
+def process_certs_data_manufacturer(all_cert_items, all_pp_items):
+    print('\n\n *** Processing manufacturers ***')
 
     #
     # Process 'cc_manufacturer' CSV field
@@ -2662,6 +2662,202 @@ def process_certificates_data(all_cert_items, all_pp_items):
                                 cert['processed']['cc_pp_id'] = sub_profile['pp_id_legacy']
                             # set path to protection profile file
                             cert['processed']['pp_filename'] = sub_profile['pp_filename']
+
+    return all_cert_items
+
+
+def collect_all_certid_references(all_cert_items: dict):
+    # correct all typos and unfinished certid references
+    # idea: collect all found references, try to find largest shared prefix (must be at least xx chars)
+    # update dist with processed list of manufactures
+    all_cert_ids = {}
+    all_cert_items_keys = list(all_cert_items.keys())
+    for file_name in all_cert_items_keys:
+        cert = all_cert_items[file_name]
+        # extract certids
+        cert_ids = {}
+        st_cert_ids = {}
+        if is_in_dict(cert, ['keywords_scan', 'rules_cert_id']):
+            cert_ids = cert['keywords_scan']['rules_cert_id']
+
+        if is_in_dict(cert, ['st_keywords_scan', 'rules_cert_id']):
+            st_cert_ids = cert['st_keywords_scan']['rules_cert_id']
+
+        # from certification report
+        for certid_regex in cert_ids.keys():
+            for cert_id in cert_ids[certid_regex]:
+                all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+        # from security target
+        for certid_regex in st_cert_ids.keys():
+            for cert_id in st_cert_ids[certid_regex]:
+                all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+        # from maintainance updates
+        if is_in_dict(cert, ['csv_scan', 'maintainance_updates']):
+            for update in cert['csv_scan']['maintainance_updates']:
+                if is_in_dict(update, ['keywords_scan', 'rules_cert_id']):
+                    for certid_regex in update['keywords_scan']['rules_cert_id'].keys():
+                        for cert_id in update['keywords_scan']['rules_cert_id'][certid_regex]:
+                            all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+                if is_in_dict(update, ['st_keywords_scan', 'rules_cert_id']):
+                    for certid_regex in update['st_keywords_scan']['rules_cert_id'].keys():
+                        for cert_id in update['st_keywords_scan']['rules_cert_id'][certid_regex]:
+                            all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+
+    return all_cert_ids
+
+
+def fix_certid_references(all_cert_ids: dict):
+    # try to fix certificates
+    all_ids_keys = list(all_cert_ids.keys())
+    for cert_id in all_ids_keys:
+        new_cert_id = cert_id
+        new_cert_id = new_cert_id.rstrip()
+
+        # ANSSI
+        if cert_id.startswith('ANSS'):
+            if new_cert_id.startswith('ANSSi'):  # mistyped ANSSi
+                new_cert_id = 'ANSSI' + new_cert_id[4:]
+            if new_cert_id[
+                len('ANSSI-CC-0000')] == '_':  # _ instead of / after year (ANSSI-CC-2010_40 -> ANSSI-CC-2010/40)
+                new_cert_id = new_cert_id[:len('ANSSI-CC-0000')] + '/' + new_cert_id[len('ANSSI-CC-0000') + 1:]
+            if '_' in new_cert_id:  # _ instead of -
+                new_cert_id = new_cert_id.replace('_', '-')
+
+        # BSI
+        if cert_id.startswith('BSI-DSZ-CC-'):  # unfinished BSI-DSZ-CC
+            # missing year
+            # lowercase version
+            bsi_parts = cert_id.split('-')
+            cert_num = None
+            cert_version = None
+            cert_year = None
+
+            if len(bsi_parts) > 3:
+                cert_num = bsi_parts[3]
+            if len(bsi_parts) > 4:
+                if bsi_parts[4].startswith('V') or bsi_parts[4].startswith('v'):
+                    cert_version = bsi_parts[4].upper()  # get version in uppercase
+                else:
+                    cert_year = bsi_parts[4]
+            if len(bsi_parts) > 5:
+                cert_year = bsi_parts[5]
+
+            # year may be missing - try to find the right one
+            if cert_year is None:
+                for year in range(1996, 2030):
+                    cert_id_possible = cert_id + '-' + str(year)
+                    if cert_id_possible in all_cert_ids:
+                        # we found version with year
+                        cert_year = str(year)
+                        break
+
+            # reconstruct BSI number again
+            new_cert_id = 'BSI-DSZ-CC'
+            if cert_num is not None:
+                new_cert_id += '-' + cert_num
+            if cert_version is not None:
+                new_cert_id += '-' + cert_version
+            if cert_year is not None:
+                new_cert_id += '-' + cert_year
+
+        # Spain
+        # 2014-55-INF-1505 v1 -> 2014-55-INF-1505
+        if '-INF-' in cert_id:
+            # Spain id has incremental version for reassesment/recertificaton, but there is also changing base id => drop version
+            spain_parts = cert_id.split('-')
+            cert_year = None
+            cert_batch = None
+            cert_num = None
+            cert_version = None
+            cert_year = spain_parts[0]
+            cert_batch = spain_parts[1]
+            cert_num = spain_parts[3]
+
+            if 'v' in cert_num:
+                cert_version = cert_num[cert_num.find('v') + 1:]
+                cert_num = cert_num[:cert_num.find('v')]
+            if 'V' in cert_num:
+                cert_version = cert_num[cert_num.find('V') + 1:]
+                cert_num = cert_num[:cert_num.find('V')]
+
+            new_cert_id = '{}-{}-INF-{}'.format(cert_year, cert_batch, cert_num)  # drop version
+
+        # Italia
+        # OCSI/CERT/ATS/01/2018 -> OCSI/CERT/ATS/01/2018/RC
+        if 'OCSI/CERT' in cert_id:
+            if not cert_id.endswith('/RC'):
+                new_cert_id = cert_id + '/RC'
+
+        # update fixed id
+        if cert_id != new_cert_id:
+            all_cert_ids[cert_id] = new_cert_id
+
+    return all_cert_ids
+
+def process_certs_data_normalize_certid(all_cert_items, all_pp_items):
+    print('\n\n *** Process referenced cert ids ***')
+    all_cert_ids = collect_all_certid_references(all_cert_items)
+    print(len(all_cert_ids))
+
+    for id in sorted(all_cert_ids.keys()):
+        print(id)
+
+    # fix heuristically found references
+    all_cert_ids = fix_certid_references(all_cert_ids)
+
+    # print updated cert_id refs
+    for id in sorted(all_cert_ids.keys()):
+        if id != all_cert_ids[id]:
+            print('Update detected from {} to {}'.format(id, all_cert_ids[id]))
+
+    # apply fixed references
+    all_cert_items_keys = list(all_cert_items.keys())
+    reference_type = 'unknown'
+    for file_name in all_cert_items_keys:
+        cert = all_cert_items[file_name]
+        if not is_in_dict(cert, ['processed']):
+            cert['processed'] = {}
+        if not is_in_dict(cert['processed'], ['referenced_cert_ids']):
+            cert['processed']['referenced_cert_ids'] = {}
+        if not is_in_dict(cert['processed']['referenced_cert_ids'], [reference_type]):
+            cert['processed']['referenced_cert_ids'][reference_type] = {}
+
+        def update_ref_cert_id(cert: dict, matched_ref_cert_ids: dict, sanitized_cert_ids: dict):
+            for certid_regex in matched_ref_cert_ids.keys():
+                for cert_id in matched_ref_cert_ids[certid_regex]:
+                    if sanitized_cert_ids[cert_id] not in cert['processed']['referenced_cert_ids'][reference_type]:
+                        cert['processed']['referenced_cert_ids'][reference_type][sanitized_cert_ids[cert_id]] = {}
+                        cert['processed']['referenced_cert_ids'][reference_type][sanitized_cert_ids[cert_id]]['count'] = 0
+                    ref_count = matched_ref_cert_ids[certid_regex][cert_id]['count']
+                    cert['processed']['referenced_cert_ids'][reference_type][sanitized_cert_ids[cert_id]]['count'] += ref_count
+
+        # from cert report
+        if is_in_dict(cert, ['keywords_scan', 'rules_cert_id']):
+            update_ref_cert_id(cert, cert['keywords_scan']['rules_cert_id'], all_cert_ids)
+        # from security target
+        if is_in_dict(cert, ['st_keywords_scan', 'rules_cert_id']):
+            update_ref_cert_id(cert, cert['st_keywords_scan']['rules_cert_id'], all_cert_ids)
+        # from manintaince updates
+        if is_in_dict(cert, ['csv_scan', 'maintainance_updates']):
+            for update in cert['csv_scan']['maintainance_updates']:
+                if is_in_dict(update, ['keywords_scan', 'rules_cert_id']):
+                    update_ref_cert_id(cert, update['keywords_scan']['rules_cert_id'], all_cert_ids)
+                if is_in_dict(update, ['st_keywords_scan', 'rules_cert_id']):
+                    update_ref_cert_id(cert, update['st_keywords_scan']['rules_cert_id'], all_cert_ids)
+
+    # draw versions of certid with revisions
+    # BSI-DSZ-CC-id-version-year_maintainance  (e.g., BSI-DSZ-CC-0857-V2-2015_M01)
+
+    return all_cert_items
+
+
+def process_certificates_data(all_cert_items, all_pp_items):
+    print('\n\n *** Extracting useful info from collated files ***')
+
+    all_cert_items = process_certs_data_normalize_certid(all_cert_items, all_pp_items)
+
+    all_cert_items = process_certs_data_manufacturer(all_cert_items, all_pp_items)
+
 
     return all_cert_items
 
