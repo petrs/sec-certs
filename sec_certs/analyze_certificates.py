@@ -202,7 +202,7 @@ def get_cert_node_label(cert_item, print_item_name):
         return cert_item['processed']['cert_id']
 
 
-def print_dot_graph(filter_rules_group, all_items_found, filter_label, out_dot_name, thick_as_occurences, print_item_name, highlight_certs_ids: list):
+def print_dot_graph(base_section: str, filter_rules_group, all_items_found, filter_label, out_dot_name, thick_as_occurences, print_item_name, highlight_certs_ids: list):
     # print dot
     dot = Digraph(comment='Certificate ecosystem: {}'.format(filter_rules_group))
     dot.attr('graph', label='{}'.format(filter_label), labelloc='t', fontsize='30')
@@ -225,8 +225,8 @@ def print_dot_graph(filter_rules_group, all_items_found, filter_label, out_dot_n
 
     dot.attr('node', color='gray')
     for cert_long_id in all_items_found.keys():
-        # do not continue if no keywords were extracted
-        if 'keywords_scan' not in all_items_found[cert_long_id].keys():
+        # do not continue if base section is not present
+        if base_section not in all_items_found[cert_long_id].keys():
             continue
 
         cert = all_items_found[cert_long_id]
@@ -240,7 +240,7 @@ def print_dot_graph(filter_rules_group, all_items_found, filter_label, out_dot_n
         if this_cert_id != "":
             dot.edge(this_cert_id, this_cert_id, label=just_file_name)
 
-        items_found_group = all_items_found[cert_long_id]['keywords_scan']
+        items_found_group = all_items_found[cert_long_id][base_section]
         for rules_group in items_found_group.keys():
 
             # process only specified rule groups
@@ -311,7 +311,7 @@ def plot_certid_to_item_graph(item_path, all_items_found, filter_label, out_dot_
     print('{} pdf rendered'.format(out_dot_name))
 
 
-def build_cert_references(filter_rules_group, all_items_found):
+def build_cert_references(base_section_name: str, filter_rules_group, all_items_found):
     # build list of references
     referenced_by = {}
     for cert_long_id in all_items_found.keys():
@@ -320,8 +320,8 @@ def build_cert_references(filter_rules_group, all_items_found):
             referenced_by[cert_long_id] = copy.deepcopy(all_items_found[cert_long_id]['processed']['connections'])
             continue
 
-        # do not continue if no keywords were extracted ()
-        if 'keywords_scan' not in all_items_found[cert_long_id].keys():
+        # do not continue if base section is not present
+        if base_section_name not in all_items_found[cert_long_id].keys():
             continue
 
         cert = all_items_found[cert_long_id]
@@ -329,7 +329,7 @@ def build_cert_references(filter_rules_group, all_items_found):
         if is_in_dict(cert, ['processed', 'cert_id']):
             this_cert_id = cert['processed']['cert_id']
 
-        items_found_group = all_items_found[cert_long_id]['keywords_scan']
+        items_found_group = all_items_found[cert_long_id][base_section_name]
         for rules_group in items_found_group.keys():
 
             # process only specified rule groups
@@ -409,7 +409,7 @@ def analyze_references_graph(filter_rules_group, all_items_found, filter_label):
                 else:
                     cert_id_to_long_id_mapping[this_cert_id] = cert_long_id
 
-    referenced_by, referenced_by_indirect = build_cert_references(filter_rules_group, all_items_found)
+    referenced_by, referenced_by_indirect = build_cert_references('processed', filter_rules_group, all_items_found)
 
     #
     # process direct references
@@ -1036,11 +1036,13 @@ def analyze_sc_frequency(all_cert_items, filter_label, sec_component_label):
 
 def generate_dot_graphs(all_items_found, filter_label, highlight_certs_id=None):
     # with name of certified items
-    print_dot_graph(['rules_cert_id'], all_items_found, filter_label, 'certidname_graph.dot', True, True, highlight_certs_id)
+    print_dot_graph('keywords_scan', ['rules_cert_id'], all_items_found, filter_label, 'certidname_graph.dot', True, True, highlight_certs_id)
+    print_dot_graph('processed', ['referenced_cert_ids'], all_items_found, filter_label, 'certidname_sanitized_graph.dot', True, True, highlight_certs_id)
     # without name of certified items
-    print_dot_graph(['rules_cert_id'], all_items_found, filter_label, 'certid_graph.dot', True, False, highlight_certs_id)
+    print_dot_graph('keywords_scan', ['rules_cert_id'], all_items_found, filter_label, 'certid_graph.dot', True, False, highlight_certs_id)
+    print_dot_graph('processed', ['referenced_cert_ids'], all_items_found, filter_label, 'certid_sanitized_graph.dot', True, False, highlight_certs_id)
     # link between device and its javacard version
-    print_dot_graph(['rules_javacard'], all_items_found, filter_label, 'cert_javacard_graph.dot', False, True, highlight_certs_id)
+    print_dot_graph('keywords_scan', ['rules_javacard'], all_items_found, filter_label, 'cert_javacard_graph.dot', False, True, highlight_certs_id)
 
     # link between certificates and their protection profiles based on csv_scan
     #print_dot_graph(['rules_javacard'], all_items_found, filter_label, 'cert_javacard_graph.dot', False, False, highlight_certs_id)
@@ -1049,20 +1051,20 @@ def generate_dot_graphs(all_items_found, filter_label, highlight_certs_id=None):
     #    print_dot_graph(['rules_crypto_libs'], all_items_found, filter_label, 'cert_crypto_libs_graph.dot', False)
     #    print_dot_graph(['rules_vendor'], all_items_found, filter_label, 'rules_vendor.dot', False)
     #    print_dot_graph(['rules_crypto_algs'], all_items_found, filter_label, 'rules_crypto_algs.dot', False)
-    print_dot_graph(['rules_protection_profiles'], all_items_found, filter_label, 'rules_protection_profiles.dot',
+    print_dot_graph('keywords_scan', ['rules_protection_profiles'], all_items_found, filter_label, 'rules_protection_profiles.dot',
                     True, False, highlight_certs_id)
     #    print_dot_graph(['rules_defenses'], all_items_found, filter_label, 'rules_defenses.dot', False)
 
 
 def do_all_analysis(all_cert_items, filter_label, highlight_certs_id=None):
     analyze_cert_years_frequency(all_cert_items, filter_label)
-    analyze_references_graph(['rules_cert_id'], all_cert_items, filter_label)
     analyze_eal_frequency(all_cert_items, filter_label)
     analyze_security_assurance_component_frequency(all_cert_items, filter_label)
     analyze_security_functional_component_frequency(all_cert_items, filter_label)
     analyze_pdfmeta(all_cert_items, filter_label)
     plot_certid_to_item_graph(['keywords_scan', 'rules_protection_profiles'], all_cert_items, filter_label, 'certid_pp_graph.dot', False)
     generate_dot_graphs(all_cert_items, filter_label, highlight_certs_id)
+    analyze_references_graph(['referenced_cert_ids'], all_cert_items, filter_label)
 
 
 def do_analysis_everything(all_cert_items, current_dir: Path):
@@ -1092,7 +1094,7 @@ def do_analysis_force_end_date(all_cert_items, current_dir: Path, force_end_date
 
 def do_analysis_affected(all_cert_items: dict, results_dir: Path, target_certs_id: list, set_name_label: str):
     # build references graph
-    referenced_by_direct, referenced_by_indirect = build_cert_references(['rules_cert_id'], all_cert_items)
+    referenced_by_direct, referenced_by_indirect = build_cert_references('processed', ['referenced_cert_ids'], all_cert_items)
 
     # extract only such references which are relevant to target_certs_id
     filter_direct = set()
@@ -1140,7 +1142,7 @@ def filter_and_do_all_analysis_filtered(all_cert_items: dict, target_certs_id: l
 
 def do_analysis_affecting(all_cert_items: dict, results_dir: Path, target_certs_id: list, set_name_label: str):
     # build references graph
-    referenced_by_direct, referenced_by_indirect = build_cert_references(['rules_cert_id'], all_cert_items)
+    referenced_by_direct, referenced_by_indirect = build_cert_references('processed', ['referenced_cert_ids'], all_cert_items)
 
     # extract only such references which are relevant to target_certs_id
     # idea - loop over all cert ids, add to set when target id(s) is referenced
