@@ -477,6 +477,287 @@ def search_only_headers_bsi(walk_dir: Path):
     return items_found_all, files_without_match
 
 
+def search_only_headers_nscib(walk_dir: Path):
+    print('NSCIB HEADER SEARCH')
+    LINE_SEPARATOR_STRICT = ' '
+    NUM_LINES_TO_INVESTIGATE = 60
+    items_found_all = {}
+    items_found = {}
+    files_without_match = []
+    files_to_process = get_files_to_process(walk_dir, '.txt')
+    with tqdm(total=len(files_to_process)) as progress:
+        for file_name in files_to_process:
+            if 'NSCIB-CC-' in file_name:
+                #
+                # Process front page with info: cert_id, certified_item and developer
+                #
+                whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(
+                    file_name, NUM_LINES_TO_INVESTIGATE, LINE_SEPARATOR_STRICT)
+
+                certified_item = ''
+                developer = ''
+                cert_lab = ''
+                cert_id = ''
+                sponsor = ''
+
+                lines = whole_text_with_newlines.splitlines()
+                no_match_yet = True
+                item_offset = -1
+                for line_index in range(0, len(lines)):
+                    line = lines[line_index]
+
+                    if 'Certification Report' in line:
+                        item_offset = line_index + 1
+                    if 'Assurance Continuity Maintenance Report' in line:
+                        item_offset = line_index + 1
+
+                    SPONSORDEVELOPER_STR = 'Sponsor and developer:'
+                    if SPONSORDEVELOPER_STR in line:
+                        if no_match_yet:
+                            items_found_all[file_name] = {}
+                            items_found = items_found_all[file_name]
+                            no_match_yet = False
+
+                        # all lines above till 'Certification Report' or 'Assurance Continuity Maintenance Report'
+                        certified_item = ''
+                        for name_index in range(item_offset, line_index):
+                            certified_item += lines[name_index] + ' '
+                        developer = line[line.find(SPONSORDEVELOPER_STR) + len(SPONSORDEVELOPER_STR):]
+
+                    SPONSOR_STR = 'Sponsor:'
+                    if SPONSOR_STR in line:
+                        if no_match_yet:
+                            items_found_all[file_name] = {}
+                            items_found = items_found_all[file_name]
+                            no_match_yet = False
+
+                        # all lines above till 'Certification Report' or 'Assurance Continuity Maintenance Report'
+                        certified_item = ''
+                        for name_index in range(item_offset, line_index):
+                            certified_item += lines[name_index] + ' '
+                        sponsor = line[line.find(SPONSOR_STR) + len(SPONSOR_STR):]
+
+                    DEVELOPER_STR = 'Developer:'
+                    if DEVELOPER_STR in line:
+                        developer = line[line.find(DEVELOPER_STR) + len(DEVELOPER_STR):]
+
+                    CERTLAB_STR = 'Evaluation facility:'
+                    if CERTLAB_STR in line:
+                        cert_lab = line[line.find(CERTLAB_STR) + len(CERTLAB_STR):]
+
+                    REPORTNUM_STR = 'Report number:'
+                    if REPORTNUM_STR in line:
+                        cert_id = line[line.find(REPORTNUM_STR) + len(REPORTNUM_STR):]
+
+                if no_match_yet:
+                    files_without_match.append(file_name)
+                else:
+                    items_found[TAG_CERT_ID] = normalize_match_string(cert_id)
+                    items_found[TAG_CERT_ITEM] = normalize_match_string(
+                        certified_item)
+                    items_found[TAG_DEVELOPER] = normalize_match_string(developer)
+                    items_found[TAG_CERT_LAB] = cert_lab
+
+            progress.update(1)
+
+    print('\n*** Certificates without detected preface:')
+    for file_name in files_without_match:
+        print('No hits for {}'.format(file_name))
+    print('Total no hits files: {}'.format(len(files_without_match)))
+    print('\n**********************************')
+
+    return items_found_all, files_without_match
+
+
+def search_only_headers_nscib_regex_unused(walk_dir: Path):
+    print('NSCIB HEADER SEARCH')
+    LINE_SEPARATOR_STRICT = ' '
+    NUM_LINES_TO_INVESTIGATE = 60
+    rules_certificate_preface = [
+        r'Certification Report(.*)Sponsor and developer:(.*)Evaluation facility:(.*)Report number:(.*)Report version:(.*)Project number:(.*)Author\(s\):(.*)Date:(.*)Number of pages:(.*)Number of appendices:(.*)Reproduction of this report is authorized provided the report is reproduced in its entirety.',
+        r'Assurance Continuity Maintenance Report(.*)Sponsor and developer:(.*)Evaluation facility:(.*)Report number:(.*)Report version:(.*)Project number:(.*)Author\(s\):(.*)Date:(.*)Number of pages:(.*)Number of appendices:(.*)Reproduction of this report is authorized provided the report is reproduced in its entirety.'
+    ]
+    items_found_all = {}
+    items_found = {}
+    files_without_match = []
+    files_to_process = get_files_to_process(walk_dir, '.txt')
+    with tqdm(total=len(files_to_process)) as progress:
+        for file_name in files_to_process:
+            no_match_yet = True
+            #
+            # Process front page with info: cert_id, certified_item and developer
+            #
+            whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(
+                file_name, NUM_LINES_TO_INVESTIGATE, LINE_SEPARATOR_STRICT)
+
+            for rule in rules_certificate_preface:
+                rule_and_sep = rule + REGEXEC_SEP
+
+                for m in re.finditer(rule_and_sep, whole_text):
+                    if no_match_yet:
+                        items_found_all[file_name] = {}
+                        items_found_all[file_name] = {}
+                        items_found = items_found_all[file_name]
+                        items_found[TAG_HEADER_MATCH_RULES] = []
+                        no_match_yet = False
+
+                    # insert rule if at least one match for it was found
+                    if rule not in items_found[TAG_HEADER_MATCH_RULES]:
+                        items_found[TAG_HEADER_MATCH_RULES].append(rule)
+
+                    match_groups = m.groups()
+                    certified_item = match_groups[0]
+                    developer = match_groups[1]
+                    cert_lab = match_groups[2]
+                    cert_id = match_groups[3]
+
+                    items_found[TAG_CERT_ID] = normalize_match_string(cert_id)
+                    items_found[TAG_CERT_ITEM] = normalize_match_string(
+                        certified_item)
+                    items_found[TAG_DEVELOPER] = normalize_match_string(developer)
+                    items_found[TAG_CERT_LAB] = cert_lab
+
+            if no_match_yet:
+                files_without_match.append(file_name)
+
+            progress.update(1)
+
+    print('\n*** Certificates without detected preface:')
+    for file_name in files_without_match:
+        print('No hits for {}'.format(file_name))
+    print('Total no hits files: {}'.format(len(files_without_match)))
+    print('\n**********************************')
+
+    return items_found_all, files_without_match
+
+
+def search_only_headers_niap_regex_unused(walk_dir: Path):
+    print('US NIAP HEADER SEARCH')
+    LINE_SEPARATOR_STRICT = ' '
+    NUM_LINES_TO_INVESTIGATE = 60
+    rules_certificate_preface = [
+        'Validation Report(.*)Report Number:(.*)Dated:(.*)Version[:]*(.*)National Institute of Standards',
+        'Validation Report(.*)Report Number:(.*)Dated:(.*)National Institute of Standards',
+        'Validation Report(.*)Report Number:(.*)Version(.*)National Institute of Standards',
+        'Maintenance Update of(.*)Maintenance Report Number:(.*)Date of Activity:(.*)References:',
+        'ASSURANCE CONTINUITY MAINTENANCE REPORT FOR (.*)Maintenance Report Number:(.*)Date of Activity:(.*)References:'
+    ]
+    items_found_all = {}
+    items_found = {}
+    files_without_match = []
+    files_to_process = get_files_to_process(walk_dir, '.txt')
+    with tqdm(total=len(files_to_process)) as progress:
+        for file_name in files_to_process:
+            no_match_yet = True
+            #
+            # Process front page with info: cert_id, certified_item and developer
+            #
+            whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(
+                file_name, NUM_LINES_TO_INVESTIGATE, LINE_SEPARATOR_STRICT)
+
+            for rule in rules_certificate_preface:
+                rule_and_sep = rule + REGEXEC_SEP
+
+                for m in re.finditer(rule_and_sep, whole_text):
+                    if no_match_yet:
+                        items_found_all[file_name] = {}
+                        items_found = items_found_all[file_name]
+                        items_found[TAG_HEADER_MATCH_RULES] = []
+                        no_match_yet = False
+
+                    # insert rule if at least one match for it was found
+                    if rule not in items_found[TAG_HEADER_MATCH_RULES]:
+                        items_found[TAG_HEADER_MATCH_RULES].append(rule)
+
+                    match_groups = m.groups()
+                    certified_item = match_groups[0]
+                    cert_id = match_groups[1]
+
+                    items_found[TAG_CERT_ID] = normalize_match_string(cert_id)
+                    items_found[TAG_CERT_ITEM] = normalize_match_string(certified_item)
+                    items_found[TAG_CERT_LAB] = 'US NIAP'
+
+            if no_match_yet:
+                files_without_match.append(file_name)
+
+            progress.update(1)
+
+    print('\n*** Certificates without detected preface:')
+    for file_name in files_without_match:
+        print('No hits for {}'.format(file_name))
+    print('Total no hits files: {}'.format(len(files_without_match)))
+    print('\n**********************************')
+
+    return items_found_all, files_without_match
+
+
+def search_only_headers_niap(walk_dir: Path):
+    '''
+    Find and extrcat ite name and cert id from front page.
+    NOTE: will miss several older ill-formated Continuity Maintenance Report reports
+    :param walk_dir:
+    :return:
+    '''
+    print('US NIAP HEADER SEARCH')
+    LINE_SEPARATOR_STRICT = ' '
+    NUM_LINES_TO_INVESTIGATE = 15
+    items_found_all = {}
+    items_found = {}
+    files_without_match = []
+    files_to_process = get_files_to_process(walk_dir, '.txt')
+    with tqdm(total=len(files_to_process)) as progress:
+        for file_name in files_to_process:
+            if 'st_vid' in file_name:
+                #
+                # Process front page with info: cert_id, certified_item and developer
+                #
+                whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(
+                    file_name, NUM_LINES_TO_INVESTIGATE, LINE_SEPARATOR_STRICT)
+
+                certified_item = ''
+                cert_id = ''
+
+                lines = whole_text_with_newlines.splitlines()
+                no_match_yet = True
+                item_offset = -1
+                for line_index in range(0, len(lines)):
+                    line = lines[line_index]
+
+                    if 'Validation Report' in line:
+                        item_offset = line_index + 1
+
+                    REPORTNUM_STR = 'Report Number:'
+                    if REPORTNUM_STR in line:
+                        if no_match_yet:
+                            items_found_all[file_name] = {}
+                            items_found = items_found_all[file_name]
+                            no_match_yet = False
+
+                        # all lines above till 'Certification Report' or 'Assurance Continuity Maintenance Report'
+                        certified_item = ''
+                        for name_index in range(item_offset, line_index):
+                            certified_item += lines[name_index] + ' '
+                        cert_id = line[line.find(REPORTNUM_STR) + len(REPORTNUM_STR):]
+                        break
+
+                if no_match_yet:
+                    files_without_match.append(file_name)
+                else:
+                    items_found[TAG_CERT_ID] = normalize_match_string(cert_id)
+                    items_found[TAG_CERT_ITEM] = normalize_match_string(certified_item)
+                    items_found[TAG_CERT_LAB] = 'US NIAP'
+
+            progress.update(1)
+
+    print('\n*** Certificates without detected preface:')
+    for file_name in files_without_match:
+        print('No hits for {}'.format(file_name))
+    print('Total no hits files: {}'.format(len(files_without_match)))
+    print('\n**********************************')
+
+    return items_found_all, files_without_match
+
+
 def search_only_headers_anssi(walk_dir: Path):
     class HEADER_TYPE(Enum):
         HEADER_FULL = 1
@@ -696,6 +977,10 @@ def search_only_headers_anssi(walk_dir: Path):
 
 
 def extract_certificates_frontpage(walk_dir: Path):
+    niap_items_found, niap_files_without_match = search_only_headers_niap(
+        walk_dir)
+    nscib_items_found, nscib_files_without_match = search_only_headers_nscib(
+        walk_dir)
     anssi_items_found, anssi_files_without_match = search_only_headers_anssi(
         walk_dir)
     bsi_items_found, bsi_files_without_match = search_only_headers_bsi(
@@ -703,12 +988,12 @@ def extract_certificates_frontpage(walk_dir: Path):
 
     print('*** Files without detected header')
     files_without_match = list(
-        set(anssi_files_without_match) & set(bsi_files_without_match))
+        set(anssi_files_without_match) & set(bsi_files_without_match) & set(nscib_files_without_match) & set(niap_files_without_match))
     for file_name in files_without_match:
         print(file_name)
     print('Total no hits files: {}'.format(len(files_without_match)))
 
-    items_found_all = {**anssi_items_found, **bsi_items_found}
+    items_found_all = {**anssi_items_found, **bsi_items_found, **nscib_items_found, **niap_items_found}
     # store results into file with fixed name and also with time appendix
 
     return items_found_all
