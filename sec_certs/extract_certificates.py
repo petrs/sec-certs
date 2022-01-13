@@ -300,13 +300,17 @@ def estimate_cert_id(frontpage_scan, keywords_scan, file_name):
         file_name_no_suff = file_name[:file_name.rfind('.')]
         file_name_no_suff = file_name_no_suff[file_name_no_suff.rfind(
             os.sep) + 1:]
+        file_name_no_suff += ' '
         for rule in rules['rules_cert_id']:
-            file_name_no_suff += ' '
             matches = re.findall(rule, file_name_no_suff)
             if len(matches) > 0:
-                # we found cert id directly in name
+                # we found cert id directly in name, take longest match
                 # print('  -> cert id found directly in certificate name: {}'.format(matches[0]))
-                filename_cert_id = matches[0]
+                longest_match = matches[0]
+                for match in matches:
+                    if len(match) > len(longest_match):
+                        longest_match = match
+                filename_cert_id = longest_match
 
     if VERBOSE:
         print('Identified cert ids for {}:'.format(file_name))
