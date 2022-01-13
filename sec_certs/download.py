@@ -58,6 +58,7 @@ def download_cc_web(web_dir: Path, num_threads: int) -> Sequence[Tuple[str, int]
         ("https://www.commoncriteriaportal.org/pps/pps.csv", web_dir / "cc_pp_active.csv"),
         ("https://www.commoncriteriaportal.org/pps/pps-archived.csv",
          web_dir / "cc_pp_archived.csv")]
+
     return download_parallel(items, num_threads)
 
 

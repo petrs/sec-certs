@@ -72,6 +72,7 @@ def convert_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str]) 
         return subprocess.run(["pdftotext", *options, file_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     items = get_files_to_process(walk_dir, '.pdf')
 
+    print('***CONVERT PDF FILES***')
     results = []
     with tqdm(total=len(items)) as progress:
         for result in ThreadPool(num_threads).imap(convert_pdf_file, items):
@@ -891,7 +892,6 @@ def search_only_headers_anssi(walk_dir: Path):
 
                 for m in re.finditer(rule_and_sep, whole_text):
                     if no_match_yet:
-                        items_found_all[file_name] = {}
                         items_found_all[file_name] = {}
                         items_found = items_found_all[file_name]
                         items_found[TAG_HEADER_MATCH_RULES] = []
@@ -2340,8 +2340,7 @@ def collate_certificates_data(all_html, all_csv, all_front, all_keywords, all_pd
             file_name_to_pdfmeta_name_mapping[file_name_pdf][1] = 1
         else:
             print('ERROR: File {} not found in pdfmeta scan'.format(file_name_pdf))
-        all_cert_items[file_name]['processed']['cert_id'] = estimate_cert_id(
-            frontpage_scan, keywords_scan, file_name)
+        all_cert_items[file_name]['processed']['cert_id'] = estimate_cert_id(frontpage_scan, keywords_scan, file_name)
 
     # pair pairing in maintainance updates
     for file_name in all_csv.keys():

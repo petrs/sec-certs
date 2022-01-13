@@ -184,7 +184,6 @@ def depricated_print_dot_graph_keywordsonly(filter_rules_group, all_items_found,
                         label = str(items_found[rule][match][TAG_MATCH_COUNTER]) # label with number of occurrences
                         if this_cert_id != "":
                             dot.edge(this_cert_id, match, color='orange', style='solid', label=label, penwidth=num_occurrences)
-
     # Generate dot graph using GraphViz into pdf
     dot.render(out_dot_name, view=False)
     print('{} pdf rendered'.format(out_dot_name))
@@ -255,7 +254,7 @@ def print_dot_graph(base_section: str, filter_rules_group, all_items_found, filt
                             num_occurrences = str(items_found[rule][match][TAG_MATCH_COUNTER] / 3 + 1)
                         else:
                             num_occurrences = '1'
-                        label = str(items_found[rule][match][TAG_MATCH_COUNTER]) # label with number of occurrences
+                        label = str(items_found[rule][match][TAG_MATCH_COUNTER])  # label with number of occurrences
                         if this_cert_id != "":
                             #if is_in_dict(cert_id_to_long_id_map, [match]):
                             #    other_cert_node_label = get_cert_node_label(all_items_found[cert_id_to_long_id_map[match]], print_item_name)
