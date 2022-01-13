@@ -209,8 +209,8 @@ def main(directory, do_complete_extraction: bool, do_download_meta: bool, do_ext
             all_cert_items = json.load(json_file)
 
         if do_analysis_filtered:
-            # plot only selected analysis up to date 2020
-            do_analysis_force_end_date(all_cert_items, results_dir, 2020)
+            # plot only selected analysis up to date 2021
+            do_analysis_force_end_date(all_cert_items, results_dir, 2021)
 
             # analyze only smartcards
             do_analysis_only_filtered(all_cert_items, results_dir,
