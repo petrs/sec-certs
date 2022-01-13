@@ -1747,11 +1747,22 @@ def extract_certificates_metadata_html(file_name):
 
         class HEADER_TYPE(Enum):
             HEADER_FULL = 1
-            HEADER_MISSING_VENDOR_WEB = 2
+            HEADER_FULL_PRE2021 = 2
+            HEADER_MISSING_VENDOR_WEB = 3
 
         # IMPORTANT: order regexes based on their specificity - the most specific goes first
         rules_cc_html = [
             (HEADER_TYPE.HEADER_FULL,
+             '\<tr class=(?:""|"even")\>[ ]+\<td class="b"\>(.+?)\<a name="(.+?)" style=.+?\<!-- \<a href="(.+?)" title="Vendor\'s web site" target="_blank"\>(.+?)</a> -->'
+             '.+?\<a href="(.+?)" title="Certification Report:.+?" target="_blank" class="button2"\>[ ]+Certification Report[ ]+\</a\>'
+             '.+?\<a href="(.+?)" title="Security Target:.+?" target="_blank" class="button2">[ ]+Security Target[ ]+</a>'
+             '.+?\<!-- ------ ------ ------ Product Updates ------ ------ ------ --\>'
+             '(.+?)<!-- ------ ------ ------ END Product Updates ------ ------ ------ --\>'
+             '.+?\<!--end-product-cell--\>'
+             '.+?\<td style="text-align:center"\>\<span title=".+?"\>(.+?)\</span\>\</td\>'
+             '.+?\<td style="text-align:center"\>(.*?)\</td\>'
+             '[ ]+?\<td>(.+?)\</td\>'),
+            (HEADER_TYPE.HEADER_FULL_PRE2021,
              '\<tr class=(?:""|"even")\>[ ]+\<td class="b"\>(.+?)\<a name="(.+?)" style=.+?\<!-- \<a href="(.+?)" title="Vendor\'s web site" target="_blank"\>(.+?)</a> -->'
              '.+?\<a href="(.+?)" title="Certification Report:.+?" target="_blank" class="button2"\>Certification Report\</a\>'
              '.+?\<a href="(.+?)" title="Security Target:.+?" target="_blank" class="button2">Security Target</a>'
@@ -1761,7 +1772,6 @@ def extract_certificates_metadata_html(file_name):
              '.+?\<td style="text-align:center"\>\<span title=".+?"\>(.+?)\</span\>\</td\>'
              '.+?\<td style="text-align:center"\>(.*?)\</td\>'
              '[ ]+?\<td>(.+?)\</td\>'),
-
             (HEADER_TYPE.HEADER_MISSING_VENDOR_WEB,
              '\<tr class=(?:""|"even")\>[ ]+\<td class="b"\>(.+?)\<a name="(.+?)" style=.+?'
              '.+?\<a href="(.+?)" title="Certification Report:.+?" target="_blank" class="button2"\>Certification Report\</a\>'
