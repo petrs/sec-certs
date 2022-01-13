@@ -316,9 +316,10 @@ def build_cert_references(base_section_name: str, filter_rules_group, all_items_
     referenced_by = {}
     for cert_long_id in all_items_found.keys():
         # handle FIPS
-        if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
-            referenced_by[cert_long_id] = copy.deepcopy(all_items_found[cert_long_id]['processed']['connections'])
-            continue
+        if is_in_dict(all_items_found[cert_long_id], ['frontpage_scan']):
+            if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
+                referenced_by[cert_long_id] = copy.deepcopy(all_items_found[cert_long_id]['processed']['connections'])
+                continue
 
         # do not continue if base section is not present
         if base_section_name not in all_items_found[cert_long_id].keys():
@@ -379,12 +380,13 @@ def analyze_references_graph(filter_rules_group, all_items_found, filter_label):
     # build cert_id to item name mapping
     certid_info = {}
     for cert_long_id in all_items_found.keys():
-        if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
-            certid_info[cert_long_id] = cert_long_id
-            handling_fips_items = True
-            continue
-
         cert = all_items_found[cert_long_id]
+        if is_in_dict(all_items_found[cert_long_id], ['frontpage_scan']):
+            if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
+                certid_info[cert_long_id] = cert_long_id
+                handling_fips_items = True
+                continue
+
         if is_in_dict(cert, ['processed', 'cert_id']):
             if is_in_dict(cert, ['frontpage_scan', 'cert_item']):
                 this_cert_id = cert['processed']['cert_id']
@@ -396,9 +398,10 @@ def analyze_references_graph(filter_rules_group, all_items_found, filter_label):
     # build cert_id to cert_long_id mapping
     cert_id_to_long_id_mapping = {}
     for cert_long_id in all_items_found.keys():
-        if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
-            cert_id_to_long_id_mapping[cert_long_id] = cert_long_id
-            continue
+        if is_in_dict(all_items_found[cert_long_id], ['frontpage_scan']):
+            if 'FIPS Certificate' in all_items_found[cert_long_id]['frontpage_scan']:
+                cert_id_to_long_id_mapping[cert_long_id] = cert_long_id
+                continue
 
         cert = all_items_found[cert_long_id]
         if is_in_dict(cert, ['processed', 'cert_id']):
