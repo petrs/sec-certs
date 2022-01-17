@@ -5,8 +5,7 @@ REGEXEC_SEP = r'[ ,;\]”)(]'
 
 rules_cert_id = [
     'BSI-DSZ-CC-[0-9]+-[0-9][0-9][0-9][0-9]',  # German BSI (number + year, no version)
-    'BSI-DSZ-CC-[0-9]+-(?:V|v)[0-9]+-[0-9][0-9][0-9][0-9]',  # German BSI (number + version + year)
-    'BSI-DSZ-CC-[0-9]+-(?:V|v)[0-9]+(?!-)',  # German BSI (number + version but no year => no - after version)
+    'BSI-DSZ-CC-[0-9]+-(?:V|v)[0-9]+(-[0-9][0-9][0-9][0-9])*',  # German BSI (number + version + year or without year)
 
     'ANSS[Ii]-CC-[0-9][0-9][0-9][0-9][/-_][0-9][0-9]+(?!-M|-S)',  # French (/two or more digits then NOT -M or -S)
     'ANSS[Ii]-CC-[0-9][0-9][0-9][0-9][/-_][0-9]+[_/-]M[0-9]+',  # French, maintenance report (ANSSI-CC-2014_46_M01)
@@ -15,23 +14,18 @@ rules_cert_id = [
     'Rapport de certification [0-9]+/[0-9]+',  # French
     'Certification Report [0-9]+/[0-9]+',  # French or Australia
 
-    #'NSCIB-CC-[0-9][0-9]-[0-9]+(?!-)',  # Netherlands   (old number NSCIB-CC-05-6609)
-    'NSCIB-CC-[0-9][0-9]-[0-9]+',  # Netherlands   (old number NSCIB-CC-05-6609)
-    'NSCIB-CC-[0-9][0-9]-[0-9]+-CR[0-9]+',  # Netherlands (NSCIB-CC-year2digits-number-CR)
+    'NSCIB-CC-[0-9][0-9]-[0-9]+(-CR[0-9]+)*',  # Netherlands (old number NSCIB-CC-05-6609 or NSCIB-CC-05-6609-CR)
     'NSCIB-CC-[0-9]+-CR[0-9]*',  # Netherlands (new number NSCIB-CC-111441-CR NSCIB-CC-111441-CR1)
     'NSCIB-CC-[0-9]+-MA[0-9]*',  # Netherlands (new number NSCIB-CC-222073-MA NSCIB-CC-200716-MA2)
 
     'SERTIT-[0-9]+',  # Norway
 
     'CCEVS-VR-(?:|VID)[0-9]+-[0-9]+[a-z]?',  # US NSA (CCEVS-VR-10884-2018 CCEVS-VR-VID10877-2018)
-    # '[0-9][0-9\-]+?-CR', # Canada  (383-4-438, 383-4-82-CR, 559-LSS, 513 EWA 2020, 513 EWA 2020)
 
     'CRP[0-9]+',  # UK CESG
     'CERTIFICATION REPORT No. P[0-9]+',  # UK CESG
 
-    #'20[0-9][0-9]-[0-9]+-INF-[0-9]+(?!- )',  # Spain
-    '20[0-9][0-9]-[0-9]+-INF-[0-9]+',  # Spain
-    '20[0-9][0-9]-[0-9]+-INF-[0-9]+.(?:V|v)[0-9]+',  # Spain (2006-4-INF-98 v2 or (2006-4-INF-98-v2))
+    '20[0-9][0-9]-[0-9]+-INF-[0-9]+(.(?:V|v)[0-9]+)*',  # Spain (2006-4-INF-98 v2 or (2006-4-INF-98-v2))
 
     'KECS-CR-[0-9]+-[0-9]+',  # Korea KECS-CR-20-61
     'KECS-(?:ISIS|NISS|CISS)-[0-9]+-[0-9][0-9][0-9][0-9]',  # Korea
