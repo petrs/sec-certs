@@ -2388,6 +2388,7 @@ def collate_certificates_data(all_html, all_csv, all_front, all_keywords, all_pd
             file_name_to_pdfmeta_name_mapping[short_file_name] = [
                 long_file_name, 0]
 
+    files_without_matched_certid = {}
     all_cert_items = all_csv
     # pair html data, csv data, front pages and keywords
     for file_name in all_csv.keys():
@@ -2439,8 +2440,25 @@ def collate_certificates_data(all_html, all_csv, all_front, all_keywords, all_pd
             file_name_to_pdfmeta_name_mapping[file_name_pdf][1] = 1
         else:
             print('ERROR: File {} not found in pdfmeta scan'.format(file_name_pdf))
-        all_cert_items[file_name]['processed']['cert_id'] = estimate_cert_id(frontpage_scan, keywords_scan, file_name)
+        est_cert_id = estimate_cert_id(frontpage_scan, keywords_scan, file_name)
+        all_cert_items[file_name]['processed']['cert_id'] = est_cert_id
+        if est_cert_id == '':
+            files_without_matched_certid[file_name] = 0
 
+    # fix value of cert_id in 'processed' section
+    # build fixed cert_id mapping
+    all_cert_ids = collect_all_certid_references(all_cert_items)
+    #all_cert_ids = fix_certid_references(all_cert_ids)
+    for file_name in all_csv.keys():
+        # fix estimated cert_id using all other references found
+        current_certid = all_cert_items[file_name]['processed']['cert_id']
+        new_cert_id = fix_certid_reference(current_certid, all_cert_ids)
+        if len(current_certid) > 0 and current_certid in all_cert_ids.keys():
+            if current_certid != new_cert_id:
+                print('cert_id updated from {} to {}'.format(current_certid, new_cert_id))
+                all_cert_items[file_name]['processed']['cert_id'] = new_cert_id
+
+    # print
     # pair pairing in maintainance updates
     for file_name in all_csv.keys():
         pairing_found = False
@@ -2553,6 +2571,11 @@ def collate_certificates_data(all_html, all_csv, all_front, all_keywords, all_pd
 
     print('Records without frontpage: {}\nRecords without keywords: {}\nRecords without pdfmeta: {}'.format(
         num_frontpage_missing, num_keywords_missing, num_pdfmeta_missing))
+
+    print('\n\nFiles with missing cert_id estimation:')
+    for item in files_without_matched_certid.keys():
+        print('No cert_id estimated for {}'.format(item))
+    print('Total files with missing cert_id = {}'.format(len(files_without_matched_certid)))
 
     return all_cert_items
 
@@ -2783,22 +2806,25 @@ def collect_all_certid_references(all_cert_items: dict):
     for file_name in all_cert_items_keys:
         cert = all_cert_items[file_name]
         # extract certids
-        cert_ids = {}
-        st_cert_ids = {}
+        # from certification report
         if is_in_dict(cert, ['keywords_scan', 'rules_cert_id']):
             cert_ids = cert['keywords_scan']['rules_cert_id']
-
+            for certid_regex in cert_ids.keys():
+                for cert_id in cert_ids[certid_regex]:
+                    all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+        # from security target
         if is_in_dict(cert, ['st_keywords_scan', 'rules_cert_id']):
             st_cert_ids = cert['st_keywords_scan']['rules_cert_id']
+            for certid_regex in st_cert_ids.keys():
+                for cert_id in st_cert_ids[certid_regex]:
+                    all_cert_ids[cert_id] = cert_id  # add this cert_id into map
 
-        # from certification report
-        for certid_regex in cert_ids.keys():
-            for cert_id in cert_ids[certid_regex]:
+        # from processed cert_id
+        if is_in_dict(cert, ['processed', 'cert_id']):
+            cert_id = cert['processed']['cert_id']
+            if len(cert_id) > 0:
                 all_cert_ids[cert_id] = cert_id  # add this cert_id into map
-        # from security target
-        for certid_regex in st_cert_ids.keys():
-            for cert_id in st_cert_ids[certid_regex]:
-                all_cert_ids[cert_id] = cert_id  # add this cert_id into map
+
         # from maintainance updates
         if is_in_dict(cert, ['csv_scan', 'maintainance_updates']):
             for update in cert['csv_scan']['maintainance_updates']:
@@ -2814,87 +2840,95 @@ def collect_all_certid_references(all_cert_items: dict):
     return all_cert_ids
 
 
+def fix_certid_reference(cert_id: str, all_cert_ids: dict):
+    new_cert_id = cert_id
+    new_cert_id = new_cert_id.rstrip()
+
+    # ANSSI
+    if cert_id.startswith('ANSS'):
+        if new_cert_id.startswith('ANSSi'):  # mistyped ANSSi
+            new_cert_id = 'ANSSI' + new_cert_id[4:]
+        if len(new_cert_id) > len('ANSSI-CC-0000'):
+            if new_cert_id[len('ANSSI-CC-0000')] == '_':  # _ instead of / after year (ANSSI-CC-2010_40 -> ANSSI-CC-2010/40)
+                new_cert_id = new_cert_id[:len('ANSSI-CC-0000')] + '/' + new_cert_id[len('ANSSI-CC-0000') + 1:]
+        if '_' in new_cert_id:  # _ instead of -
+            new_cert_id = new_cert_id.replace('_', '-')
+
+    # BSI
+    if cert_id.startswith('BSI-DSZ-CC-'):  # unfinished BSI-DSZ-CC
+        # missing year
+        # lowercase version
+        bsi_parts = cert_id.split('-')
+        cert_num = None
+        cert_version = None
+        cert_year = None
+
+        if len(bsi_parts) > 3:
+            cert_num = bsi_parts[3]
+        if len(bsi_parts) > 4:
+            if bsi_parts[4].startswith('V') or bsi_parts[4].startswith('v'):
+                cert_version = bsi_parts[4].upper()  # get version in uppercase
+            else:
+                cert_year = bsi_parts[4]
+        if len(bsi_parts) > 5:
+            cert_year = bsi_parts[5]
+
+        # year may be missing - try to find the right one
+        if cert_year is None:
+            for year in range(1996, 2030):
+                cert_id_possible = cert_id + '-' + str(year)
+                if cert_id_possible in all_cert_ids:
+                    # we found version with year
+                    cert_year = str(year)
+                    break
+
+        # reconstruct BSI number again
+        new_cert_id = 'BSI-DSZ-CC'
+        if cert_num is not None:
+            if len(cert_num) < 4:  # add ommited zero in certnum
+                cert_num = '0' + cert_num
+            new_cert_id += '-' + cert_num
+        if cert_version is not None:
+            new_cert_id += '-' + cert_version
+        if cert_year is not None:
+            new_cert_id += '-' + cert_year
+
+    # Spain
+    # 2014-55-INF-1505 v1 -> 2014-55-INF-1505
+    if '-INF-' in cert_id:
+        # Spain id has incremental version for reassesment/recertificaton, but there is also changing base id => drop version
+        spain_parts = cert_id.split('-')
+        cert_year = None
+        cert_batch = None
+        cert_num = None
+        cert_version = None
+        cert_year = spain_parts[0]
+        cert_batch = spain_parts[1]
+        cert_num = spain_parts[3]
+
+        if 'v' in cert_num:
+            cert_version = cert_num[cert_num.find('v') + 1:]
+            cert_num = cert_num[:cert_num.find('v')]
+        if 'V' in cert_num:
+            cert_version = cert_num[cert_num.find('V') + 1:]
+            cert_num = cert_num[:cert_num.find('V')]
+
+        new_cert_id = '{}-{}-INF-{}'.format(cert_year, cert_batch, cert_num)  # drop version
+
+    # Italia
+    # OCSI/CERT/ATS/01/2018 -> OCSI/CERT/ATS/01/2018/RC
+    if 'OCSI/CERT' in cert_id:
+        if not cert_id.endswith('/RC'):
+            new_cert_id = cert_id + '/RC'
+
+    return new_cert_id
+
+
 def fix_certid_references(all_cert_ids: dict):
     # try to fix certificates
     all_ids_keys = list(all_cert_ids.keys())
     for cert_id in all_ids_keys:
-        new_cert_id = cert_id
-        new_cert_id = new_cert_id.rstrip()
-
-        # ANSSI
-        if cert_id.startswith('ANSS'):
-            if new_cert_id.startswith('ANSSi'):  # mistyped ANSSi
-                new_cert_id = 'ANSSI' + new_cert_id[4:]
-            if new_cert_id[
-                len('ANSSI-CC-0000')] == '_':  # _ instead of / after year (ANSSI-CC-2010_40 -> ANSSI-CC-2010/40)
-                new_cert_id = new_cert_id[:len('ANSSI-CC-0000')] + '/' + new_cert_id[len('ANSSI-CC-0000') + 1:]
-            if '_' in new_cert_id:  # _ instead of -
-                new_cert_id = new_cert_id.replace('_', '-')
-
-        # BSI
-        if cert_id.startswith('BSI-DSZ-CC-'):  # unfinished BSI-DSZ-CC
-            # missing year
-            # lowercase version
-            bsi_parts = cert_id.split('-')
-            cert_num = None
-            cert_version = None
-            cert_year = None
-
-            if len(bsi_parts) > 3:
-                cert_num = bsi_parts[3]
-            if len(bsi_parts) > 4:
-                if bsi_parts[4].startswith('V') or bsi_parts[4].startswith('v'):
-                    cert_version = bsi_parts[4].upper()  # get version in uppercase
-                else:
-                    cert_year = bsi_parts[4]
-            if len(bsi_parts) > 5:
-                cert_year = bsi_parts[5]
-
-            # year may be missing - try to find the right one
-            if cert_year is None:
-                for year in range(1996, 2030):
-                    cert_id_possible = cert_id + '-' + str(year)
-                    if cert_id_possible in all_cert_ids:
-                        # we found version with year
-                        cert_year = str(year)
-                        break
-
-            # reconstruct BSI number again
-            new_cert_id = 'BSI-DSZ-CC'
-            if cert_num is not None:
-                new_cert_id += '-' + cert_num
-            if cert_version is not None:
-                new_cert_id += '-' + cert_version
-            if cert_year is not None:
-                new_cert_id += '-' + cert_year
-
-        # Spain
-        # 2014-55-INF-1505 v1 -> 2014-55-INF-1505
-        if '-INF-' in cert_id:
-            # Spain id has incremental version for reassesment/recertificaton, but there is also changing base id => drop version
-            spain_parts = cert_id.split('-')
-            cert_year = None
-            cert_batch = None
-            cert_num = None
-            cert_version = None
-            cert_year = spain_parts[0]
-            cert_batch = spain_parts[1]
-            cert_num = spain_parts[3]
-
-            if 'v' in cert_num:
-                cert_version = cert_num[cert_num.find('v') + 1:]
-                cert_num = cert_num[:cert_num.find('v')]
-            if 'V' in cert_num:
-                cert_version = cert_num[cert_num.find('V') + 1:]
-                cert_num = cert_num[:cert_num.find('V')]
-
-            new_cert_id = '{}-{}-INF-{}'.format(cert_year, cert_batch, cert_num)  # drop version
-
-        # Italia
-        # OCSI/CERT/ATS/01/2018 -> OCSI/CERT/ATS/01/2018/RC
-        if 'OCSI/CERT' in cert_id:
-            if not cert_id.endswith('/RC'):
-                new_cert_id = cert_id + '/RC'
+        new_cert_id = fix_certid_reference(cert_id, all_cert_ids)
 
         # update fixed id
         if cert_id != new_cert_id:
