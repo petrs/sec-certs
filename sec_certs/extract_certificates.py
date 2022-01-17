@@ -319,14 +319,24 @@ def estimate_cert_id(frontpage_scan, keywords_scan, file_name):
         print('  filename_cert_id: {}'.format(filename_cert_id))
         print('  keywords_cert_id: {}'.format(keywords_cert_id))
 
-    if frontpage_cert_id != '':
-        return frontpage_cert_id
-    if filename_cert_id != '':
-        return filename_cert_id
-    if keywords_cert_id != '':
-        return keywords_cert_id
+    MIN_VALID_CERTID_LENGTH = 5
+    MAX_VALID_CERTID_LENGTH = 60
+    est_cert_id = ''
+    if len(keywords_cert_id) >= MIN_VALID_CERTID_LENGTH and len(keywords_cert_id) <= MAX_VALID_CERTID_LENGTH:
+        est_cert_id = keywords_cert_id
+    if len(frontpage_cert_id) >= MIN_VALID_CERTID_LENGTH and len(frontpage_cert_id) <= MAX_VALID_CERTID_LENGTH:
+        est_cert_id = frontpage_cert_id
+    if len(filename_cert_id) >= MIN_VALID_CERTID_LENGTH and len(filename_cert_id) <= MAX_VALID_CERTID_LENGTH:
+        est_cert_id = filename_cert_id
 
-    return ''
+    if est_cert_id == '':
+        print('WARNING: cannot estimate cert_id from {}'.format(file_name))
+        print('  (keywords|front|filename|): {}|{}|{} '.format(keywords_cert_id, frontpage_cert_id, filename_cert_id))
+    else:
+        if len(est_cert_id) < MIN_VALID_CERTID_LENGTH or len(est_cert_id) > MAX_VALID_CERTID_LENGTH:
+            print('WARNING: Possibly incorrect cert_id estimation for {} (is \'{}\')'.format(file_name, est_cert_id))
+            print('  (keywords|front|filename|): {}|{}|{} '.format(keywords_cert_id, frontpage_cert_id, filename_cert_id))
+    return est_cert_id
 
 
 def save_modified_cert_file(target_file, modified_cert_file_text, is_unicode_text):
