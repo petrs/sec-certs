@@ -702,6 +702,91 @@ def search_only_headers_niap_regex_unused(walk_dir: Path):
     return items_found_all, files_without_match
 
 
+def search_only_headers_canada(walk_dir: Path):
+    '''
+    Find and extract name and cert id from front page.
+    :param walk_dir:
+    :return:
+    '''
+    print('CANADA HEADER SEARCH')
+    LINE_SEPARATOR_STRICT = ' '
+    NUM_LINES_TO_INVESTIGATE = 20
+    items_found_all = {}
+    items_found = {}
+    files_without_match = []
+    files_to_process = get_files_to_process(walk_dir, '.txt')
+    with tqdm(total=len(files_to_process)) as progress:
+        for file_name in files_to_process:
+            whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(
+                file_name, NUM_LINES_TO_INVESTIGATE, LINE_SEPARATOR_STRICT)
+
+            certified_item = ''
+            cert_id = ''
+
+            lines = whole_text_with_newlines.splitlines()
+            no_match_yet = True
+            item_offset = -1
+            for line_index in range(0, len(lines)):
+                line = lines[line_index]
+                if 'Government of Canada, Communications Security Establishment' in line:
+                    REPORTNUM_STR1 = 'Evaluation number:'
+                    REPORTNUM_STR2 = 'Document number:'
+                    matched_number_str = ''
+                    line_certid = lines[line_index + 1]
+                    if line_certid.startswith(REPORTNUM_STR1):
+                        matched_number_str = REPORTNUM_STR1
+                    if line_certid.startswith(REPORTNUM_STR2):
+                        matched_number_str = REPORTNUM_STR2
+                    if matched_number_str != '':
+                        if no_match_yet:
+                            items_found_all[file_name] = {}
+                            items_found = items_found_all[file_name]
+                            no_match_yet = False
+
+                        cert_id = line_certid[line_certid.find(matched_number_str) + len(matched_number_str):]
+                        break
+
+                if 'Government of Canada. This document is the property of the Government of Canada. It shall not be altered,' in line:
+                    REPORTNUM_STR = 'Evaluation number:'
+                    for offset in range(1, 20):
+                        line_certid = lines[line_index + offset]
+                        if 'UNCLASSIFIED' in line_certid:
+                            if no_match_yet:
+                                items_found_all[file_name] = {}
+                                items_found = items_found_all[file_name]
+                                no_match_yet = False
+                            line_certid = lines[line_index + offset - 4]
+                            cert_id = line_certid[line_certid.find(REPORTNUM_STR) + len(REPORTNUM_STR):]
+                            break
+                    if not no_match_yet:
+                        break
+
+                if 'UNCLASSIFIED / NON CLASSIFIÉ' in line and 'COMMON CRITERIA CERTIFICATION REPORT' in lines[line_index + 2]:
+                    line_certid = lines[line_index + 1]
+                    if no_match_yet:
+                        items_found_all[file_name] = {}
+                        items_found = items_found_all[file_name]
+                        no_match_yet = False
+                    cert_id = line_certid
+                    break
+
+            if no_match_yet:
+                files_without_match.append(file_name)
+            else:
+                items_found[TAG_CERT_ID] = normalize_match_string(cert_id)
+                items_found[TAG_CERT_LAB] = 'CANADA'
+
+            progress.update(1)
+
+    print('\n*** Certificates without detected preface:')
+    for file_name in files_without_match:
+        print('No hits for {}'.format(file_name))
+    print('Total no hits files: {}'.format(len(files_without_match)))
+    print('\n**********************************')
+
+    return items_found_all, files_without_match
+
+
 def search_only_headers_niap(walk_dir: Path):
     '''
     Find and extrcat ite name and cert id from front page.
@@ -987,23 +1072,27 @@ def search_only_headers_anssi(walk_dir: Path):
 
 
 def extract_certificates_frontpage(walk_dir: Path):
+    canada_items_found, canada_files_without_match = search_only_headers_canada(
+        walk_dir)
+    anssi_items_found, anssi_files_without_match = search_only_headers_anssi(
+        walk_dir)
     niap_items_found, niap_files_without_match = search_only_headers_niap(
         walk_dir)
     nscib_items_found, nscib_files_without_match = search_only_headers_nscib(
-        walk_dir)
-    anssi_items_found, anssi_files_without_match = search_only_headers_anssi(
         walk_dir)
     bsi_items_found, bsi_files_without_match = search_only_headers_bsi(
         walk_dir)
 
     print('*** Files without detected header')
     files_without_match = list(
-        set(anssi_files_without_match) & set(bsi_files_without_match) & set(nscib_files_without_match) & set(niap_files_without_match))
+        set(anssi_files_without_match) & set(bsi_files_without_match) & set(nscib_files_without_match)
+        & set(niap_files_without_match) & set(canada_files_without_match))
     for file_name in files_without_match:
         print(file_name)
     print('Total no hits files: {}'.format(len(files_without_match)))
 
-    items_found_all = {**anssi_items_found, **bsi_items_found, **nscib_items_found, **niap_items_found}
+    items_found_all = {**anssi_items_found, **bsi_items_found, **nscib_items_found,
+                       **niap_items_found, **canada_items_found}
     # store results into file with fixed name and also with time appendix
 
     return items_found_all
