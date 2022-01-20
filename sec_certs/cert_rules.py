@@ -48,6 +48,8 @@ rules_cert_id = [
     '(?:IC3S|STQC/CC)/[^ ]+?/CR ',  # must end with CR, no space inside
 
     'CSA_CC_[0-9]+',  # Singapure (CSA_CC_19001)
+
+    '[0-9][0-9][0-9]-[47]-[0-9][0-9][0-9](-CR)*'  # Canada xxx-{47}-xxx (383-4-438, 383-4-82-CR)
 ]
 
 rules_vendor = [
