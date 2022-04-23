@@ -115,7 +115,7 @@ def main(directory, do_complete_extraction: bool, do_download_meta: bool, do_ext
 
     if do_download_certs:
         all_download = load_json_files([results_dir / "certificate_data_download_all.json"])
-        download_cc(walk_dir, all_download[0], threads)
+        download_cc(walk_dir, all_download[0], threads, False)
 
     if do_pdftotext:
         convert_pdf_files(walk_dir, threads, ["-raw"])

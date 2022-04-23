@@ -11,8 +11,11 @@ from sec_certs.files import search_files
 CC_WEB_URL = 'https://www.commoncriteriaportal.org'
 
 
-def download_file(url: str, output: Path) -> int:
-    if not os.path.exists(output):
+def download_file(url: str, output: Path, overwrite: bool) -> int:
+    go_download = False
+    if not os.path.exists(output) or overwrite:
+        go_download = True
+    if go_download:
         r = requests.get(url, allow_redirects=True)
         try:
             with open(output, "wb") as f:
@@ -24,10 +27,10 @@ def download_file(url: str, output: Path) -> int:
         return 200
 
 
-def download_parallel(items: Sequence[Tuple[str, Path]], num_threads: int) -> Sequence[Tuple[str, int]]:
+def download_parallel(items: Sequence[Tuple[str, Path]], num_threads: int, overwrite: bool) -> Sequence[Tuple[str, int]]:
     def download(url_output):
         url, output = url_output
-        return url, download_file(url, output)
+        return url, download_file(url, output, overwrite)
 
     pool = ThreadPool(num_threads)
     responses = []
@@ -59,10 +62,10 @@ def download_cc_web(web_dir: Path, num_threads: int) -> Sequence[Tuple[str, int]
         ("https://www.commoncriteriaportal.org/pps/pps-archived.csv",
          web_dir / "cc_pp_archived.csv")]
 
-    return download_parallel(items, num_threads)
+    return download_parallel(items, num_threads, True)
 
 
-def download_cc(walk_dir: Path, cert_list, num_threads: int) -> Sequence[Tuple[str, int]]:
+def download_cc(walk_dir: Path, cert_list, num_threads: int, overwrite: bool) -> Sequence[Tuple[str, int]]:
     items = []
     for cert in cert_list:
         if cert[0].find(CC_WEB_URL) != -1:
@@ -74,7 +77,7 @@ def download_cc(walk_dir: Path, cert_list, num_threads: int) -> Sequence[Tuple[s
                 items.append((cert[2], walk_dir / "targets" / cert[3]))
             else:
                 items.append((CC_WEB_URL + cert[2], walk_dir / "targets" / cert[3]))
-    return download_parallel(items, num_threads)
+    return download_parallel(items, num_threads, overwrite)
 
 
 def download_cc_failed(walk_dir: Path, num_threads: int) -> Sequence[Tuple[str, int]]:
@@ -106,7 +109,7 @@ def download_cc_failed(walk_dir: Path, num_threads: int) -> Sequence[Tuple[str, 
                 file_name_short = file_name[file_name.rfind(os.sep) + 1:]
                 download_link = f'{CC_WEB_URL}/files/epfiles/{file_name_short}'
                 download_again.append((download_link, file_name))
-    return download_parallel(download_again, num_threads)
+    return download_parallel(download_again, num_threads, True)
 
 
 def download_fips_web(web_dir: Path):
@@ -121,7 +124,7 @@ def download_fips_web(web_dir: Path):
         web_dir / "fips_modules_revoked.html")
 
 
-def download_fips(web_dir: Path, policies_dir: Path, num_threads: int, ids: List[str]) \
+def download_fips(web_dir: Path, policies_dir: Path, num_threads: int, ids: List[str], overwrite: bool) \
         -> Tuple[Sequence[Tuple[str, int]], int]:
     web_dir.mkdir(exist_ok=True)
     policies_dir.mkdir(exist_ok=True)
@@ -134,4 +137,4 @@ def download_fips(web_dir: Path, policies_dir: Path, num_threads: int, ids: List
             f"https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp{cert_id}.pdf",
             policies_dir / f"{cert_id}.pdf") for cert_id in ids if not (policies_dir / f'{cert_id}.pdf').exists()
     ]
-    return download_parallel(html_items + sp_items, num_threads), len(html_items) + len(sp_items)
+    return download_parallel(html_items + sp_items, num_threads, overwrite), len(html_items) + len(sp_items)
