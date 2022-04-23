@@ -80,6 +80,7 @@ def print_missing_pdftotext_converts(walk_dir: str):
 def convert_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str]) -> Sequence[subprocess.CompletedProcess]:
     def convert_pdf_file(file_name: str):
         return subprocess.run(["pdftotext", *options, file_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     items = get_files_to_process(walk_dir, '.pdf')
 
     print('***CONVERT PDF FILES***')
@@ -112,13 +113,10 @@ def sanitize_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str])
                                       stderr=subprocess.DEVNULL)
 
         # Case 1: whole file is transformed incorrectly - detect and decode with other setting (e.g., no -raw)
-        whole_text, whole_text_with_newlines, was_unicode_decode_error, lines = load_cert_file(file_name_txt, 10)
+        whole_text, whole_text_with_newlines, was_unicode_decode_error = load_cert_file(file_name_txt, 10)
         change_detected = False
-        total_chars = 0
-        res = 0
-        for line in lines:
-            total_chars += len(line)
-            res += len([ele for ele in line if ele.isspace()])
+        total_chars += len(whole_text)
+        res = len([ele for ele in whole_text if ele.isspace()])
 
         if round(total_chars / 2.2) < res:
             # too many spaces, convert without '-raw'
@@ -218,7 +216,7 @@ def load_cert_file(file_name, limit_max_lines=-1, line_separator=LINE_SEPARATOR)
         # do nothing
         print(f'{file_name} not found')
 
-    return whole_text, whole_text_with_newlines, was_unicode_decode_error, lines
+    return whole_text, whole_text_with_newlines, was_unicode_decode_error
 
 
 def normalize_match_string(match):
