@@ -529,10 +529,10 @@ rules.update(common_rules)
 
 rules_certidctx = {}
 rules_certidctx['rules_cert_id'] = rules_cert_id
-#rules_certidctx['rules_cert_id_ctx'] = []
-#for rule in rules_cert_id:
-#    rule_ctx = r'.{0,300}' + rule + r'.{0,300}'
-#    rules_certidctx['rules_cert_id_ctx'].append(rule_ctx)
+rules_certidctx['rules_cert_id_ctx'] = []
+for rule in rules_cert_id:
+   rule_ctx = r'.{0,100}' + rule + r'.{0,100}'
+   rules_certidctx['rules_cert_id_ctx'].append(rule_ctx)
 
 
 for rule in rules_certidctx:
