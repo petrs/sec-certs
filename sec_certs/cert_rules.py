@@ -7,9 +7,10 @@ rules_cert_id = [
     'BSI-DSZ-CC-[0-9]+-[0-9][0-9][0-9][0-9]',  # German BSI (number + year, no version)
     'BSI-DSZ-CC-[0-9]+-(?:V|v)[0-9]+(-[0-9][0-9][0-9][0-9])*',  # German BSI (number + version + year or without year)
 
-    'ANSS[Ii]-CC-[0-9][0-9][0-9][0-9][/-_][0-9][0-9]+(?!-M|-S)',  # French (/two or more digits then NOT -M or -S)
+    'ANSS[Ii]-CC[- ][0-9][0-9][0-9][0-9][/-_][0-9][0-9]+(?!-M|-S)',  # French (two or more digits then NOT -M or -S)
     'ANSS[Ii]-CC-[0-9][0-9][0-9][0-9][/-_][0-9]+[_/-]M[0-9]+',  # French, maintenance report (ANSSI-CC-2014_46_M01)
     'ANSS[Ii]-CC-[0-9][0-9][0-9][0-9][/-_][0-9]+[_/-]S[0-9]+',  # French, surveillance report (ANSSI-CC-2012/70-S01)
+
     'DCSSI-[0-9]+/[0-9]+',  # French (DCSSI-2009/07)
     'Rapport de certification [0-9]+/[0-9]+',  # French
     'Certification Report [0-9]+/[0-9]+',  # French or Australia
@@ -32,13 +33,16 @@ rules_cert_id = [
 
     '(?:CRP|ACR)-C[0-9]+-[0-9]+',  # Japan (CRP-C0595-01 ACR-C0417-03)
     'JISEC-CC-CRP-C[0-9]+-[0-9]+-[0-9]+',  # Japan (JISEC-CC-CRP-C0689-01-2020)
+    'Certification No. C[0-9]+'  # Japan (Certification No. C0090)
 
-    'ISCB-[0-9]+-(?:RPT|FRM)-[CM][0-9]+[A-Z]?-(?:CR|AMR)-[vV][0-9][a-z]?',  # Malaysia (ISCB-3-RPT-C092-CR-v1)
+    'ISCB-[0-9]+-(?:RPT|FRM)-[CM][0-9]+[A-Z]?-(?:CR|AMR)(?:-[0-9]|)-[vV][0-9][a-z]?',  # Malaysia (ISCB-3-RPT-C092-CR-v1, ISCB-3-RPT-C068-CR-1-v1)
 
 
     'OCSI/CERT/.+?/20[0-9]+(?:\w|/RC)',  # Italia  (OCSI/CERT/ATS/01/2018/RC)
 
     '[0-9\\.]+?/TSE-CCCS-[0-9]+',  # Turkis CCCS (21.0.03/TSE-CCCS-75)
+    'STCD-[0-9]+-[0-9]+-FR-[0-9]+',  # Turkis CCCS (STCD-01-01-FR-01)
+
     #'BTBD-.+?', # Turkis CCCS
 
     'CSEC[0-9]+',  # Sweden (CSEC2019015)
@@ -49,7 +53,12 @@ rules_cert_id = [
 
     'CSA_CC_[0-9]+',  # Singapure (CSA_CC_19001)
 
-    '[0-9][0-9][0-9]-[47]-[0-9][0-9][0-9](-CR)*'  # Canada xxx-{47}-xxx (383-4-438, 383-4-82-CR)
+    '[0-9][0-9][0-9]-[47]-[0-9][0-9][0-9](-CR)*',  # Canada xxx-{47}-xxx (383-4-438, 383-4-82-CR)
+    '[0-9][0-9][0-9](?: |-)(?:EWA|LSS)(?: |-)20[0-9][0-9]',  # Canada (522-EWA-2020, 524 LSS 2020)
+    '[0-9][0-9][0-9](?:%20|-)(?:EWA|LSS|CCS)(?:%20|-)(?:20[0-9][0-9]%20|)CR%20v[0-9]\.[0-9]',  # Canada filename with space (518-LSS%20CR%20v1.0)
+
+    '(?:EFS|EFT|DXC-EFC)-T[0-9]+(?: |-)ETR [0-9]+.[0-9]+',  #  Australia (EFS-T048 ETR 1.0, EFS-T056-ETR 1.0, DXC-EFC-T092-ETR 1.0)
+]
 ]
 
 rules_vendor = [
