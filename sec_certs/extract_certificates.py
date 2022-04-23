@@ -67,6 +67,16 @@ def get_files_to_process(walk_dir: Path, required_extension: str):
     return files_to_process
 
 
+def print_missing_pdftotext_converts(walk_dir: str):
+    items = get_files_to_process(walk_dir, '.pdf')
+    missing_txt_converts = []
+    for file_name in items:
+        file_name_txt = file_name[:file_name.rfind('.')] + '.txt'
+        if not os.path.exists(file_name_txt):
+            missing_txt_converts.append(file_name)
+    print(f'Missing PDF2TXT coversions: from {len(items)} missing {len(missing_txt_converts)}: {missing_txt_converts}')
+
+
 def convert_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str]) -> Sequence[subprocess.CompletedProcess]:
     def convert_pdf_file(file_name: str):
         return subprocess.run(["pdftotext", *options, file_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
