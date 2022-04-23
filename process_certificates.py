@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import click
+
+import sec_certs.cert_rules
 from sec_certs.files import load_json_files
 from sec_certs.extract_certificates import *
 from sec_certs.analyze_certificates import *
@@ -16,6 +18,7 @@ from sec_certs.cert_rules import rules as cc_search_rules, rules_certidctx
 @click.option("--do-download-certs", "do_download_certs", is_flag=True, help="Whether to download certs.")
 @click.option("--do-pdftotext", "do_pdftotext", is_flag=True, help="Whether to perform pdftotext conversion of the certs.")
 @click.option("--do-extraction", "do_extraction_certs", is_flag=True, help="Whether to extract information from the certs.")
+@click.option("--do-extraction-certid-context", "do_extraction_certid_context", is_flag=True, help="Whether to extract refererences to certids from the certs.")
 @click.option("--do-pairing", "do_pairing", is_flag=True, help="Whether to pair PP stuff.")
 @click.option("--do-processing", "do_processing", is_flag=True, help="Whether to process certificates.")
 @click.option("--do-analysis", "do_analysis", is_flag=True, help="Whether to analyse certificates.")
@@ -29,7 +32,10 @@ from sec_certs.cert_rules import rules as cc_search_rules, rules_certidctx
 def main(directory, do_complete_extraction: bool, do_download_meta: bool, do_extraction_meta: bool,
          do_download_certs: bool, do_pdftotext: bool, do_extraction_certs: bool,
          do_pairing: bool, do_processing: bool, do_analysis: bool, do_analysis_fips: bool, do_find_affected: list,
-         do_find_affected_keywords: list, do_find_affecting: list, do_analyze_cpe: bool, analysis_label: str, threads: int):
+         do_find_affected_keywords: list, do_find_affecting: list, do_analyze_cpe: bool, analysis_label: str,
+         threads: int, do_extraction_certid_context: bool):
+
+
 
     directory = Path(directory)
     web_dir = directory / "web"
@@ -328,6 +334,12 @@ def main(directory, do_complete_extraction: bool, do_download_meta: bool, do_ext
         single_match_certs_cpe = do_analyze_cpe_certs(cpe_to_certs, certs_to_cpe, all_cpe_items, all_cert_items)
         with open(results_dir / "certs_to_cpe_single_match.json", "w") as write_file:
             json.dump(single_match_certs_cpe, write_file, indent=4, sort_keys=True)
+
+    # if do_extraction_certid_context:
+    #     all_keywords = extract_certificates_keywords_parallel(walk_dir, None, 'certificate', rules_certidctx, threads)
+    #     with open(results_dir / "certificate_data_keywords_certid.json", "w") as write_file:
+    #         json.dump(all_keywords,  write_file, indent=4, sort_keys=True)
+
 
 
 if __name__ == "__main__":
