@@ -59,7 +59,6 @@ rules_cert_id = [
 
     '(?:EFS|EFT|DXC-EFC)-T[0-9]+(?: |-)ETR [0-9]+.[0-9]+',  #  Australia (EFS-T048 ETR 1.0, EFS-T056-ETR 1.0, DXC-EFC-T092-ETR 1.0)
 ]
-]
 
 rules_vendor = [
     'NXP',
