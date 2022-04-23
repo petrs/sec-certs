@@ -302,6 +302,7 @@ def estimate_cert_id(frontpage_scan, keywords_scan, file_name):
         file_name_no_suff = file_name_no_suff[file_name_no_suff.rfind(
             os.sep) + 1:]
         file_name_no_suff += ' '
+        file_name_no_suff = file_name_no_suff.replace('%20', ' ')  # some downloaded files are with ' ' replaced to %20
         for rule in rules['rules_cert_id']:
             matches = re.findall(rule, file_name_no_suff)
             if len(matches) > 0:
