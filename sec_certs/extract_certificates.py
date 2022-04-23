@@ -176,43 +176,49 @@ def sanitize_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str])
 def load_cert_file(file_name, limit_max_lines=-1, line_separator=LINE_SEPARATOR):
     lines = []
     was_unicode_decode_error = False
-    with open(file_name, 'r', errors=FILE_ERRORS_STRATEGY) as f:
-        try:
-            lines = f.readlines()
-        except UnicodeDecodeError:
-            f.close()
-            was_unicode_decode_error = True
-            print('  WARNING: UnicodeDecodeError, opening as utf8')
-
-            with open(file_name, encoding="utf8", errors=FILE_ERRORS_STRATEGY) as f2:
-                # coding failure, try line by line
-                line = ' '
-                while line:
-                    try:
-                        line = f2.readline()
-                        lines.append(line)
-                    except UnicodeDecodeError:
-                        # ignore error
-                        continue
-
     whole_text = ''
     whole_text_with_newlines = ''
-    # we will estimate the line for searched matches
-    # => we need to known how much lines were modified (removal of eoln..)
-    # for removed newline and for any added separator
-    line_length_compensation = 1 - len(LINE_SEPARATOR)
-    lines_included = 0
-    for line in lines:
-        if limit_max_lines != -1 and lines_included >= limit_max_lines:
-            break
 
-        whole_text_with_newlines += line
-        line = line.replace('\n', '')
-        whole_text += line
-        whole_text += line_separator
-        lines_included += 1
+    try:
+        with open(file_name, 'r', errors=FILE_ERRORS_STRATEGY) as f:
+            try:
+                lines = f.readlines()
+            except UnicodeDecodeError:
+                f.close()
+                was_unicode_decode_error = True
+                print('  WARNING: UnicodeDecodeError, opening as utf8')
 
-    return whole_text, whole_text_with_newlines, was_unicode_decode_error
+                with open(file_name, encoding="utf8", errors=FILE_ERRORS_STRATEGY) as f2:
+                    # coding failure, try line by line
+                    line = ' '
+                    while line:
+                        try:
+                            line = f2.readline()
+                            lines.append(line)
+                        except UnicodeDecodeError:
+                            # ignore error
+                            continue
+
+        # we will estimate the line for searched matches
+        # => we need to known how much lines were modified (removal of eoln..)
+        # for removed newline and for any added separator
+        line_length_compensation = 1 - len(LINE_SEPARATOR)
+        lines_included = 0
+        for line in lines:
+            if limit_max_lines != -1 and lines_included >= limit_max_lines:
+                break
+
+            whole_text_with_newlines += line
+            line = line.replace('\n', '')
+            whole_text += line
+            whole_text += line_separator
+            lines_included += 1
+
+    except FileNotFoundError:
+        # do nothing
+        print(f'{file_name} not found')
+
+    return whole_text, whole_text_with_newlines, was_unicode_decode_error, lines
 
 
 def normalize_match_string(match):
