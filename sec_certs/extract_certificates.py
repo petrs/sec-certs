@@ -88,6 +88,88 @@ def convert_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str]) 
         for result in ThreadPool(num_threads).imap(convert_pdf_file, items):
             progress.update(1)
             results.append(result)
+
+    # sanitize converted files
+    sanitize_pdf_files(walk_dir, num_threads, options)
+
+    return results
+
+
+def sanitize_pdf_files(walk_dir: Path, num_threads: int, options: Sequence[str]) -> Sequence[subprocess.CompletedProcess]:
+
+    def check_pdf_file(file_name: str):
+        proc_res = None
+        # try to open converted file and check for incorrect decoding
+        # decoding with may sometimes produce text with every second character space.
+        file_name_txt = file_name[:file_name.rfind('.')] + '.txt'
+
+        # case 0: txt file was not generated at all with current flags - try without -raw
+        if not os.path.exists(file_name_txt):
+            # file not found, convert without '-raw'
+            print('txt file  not found, try converting ' + file_name + ' without -raw option')
+            options_not_raw = [option for option in options if option != '-raw']
+            proc_res = subprocess.run(["pdftotext", *options_not_raw, file_name], stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL)
+
+        # Case 1: whole file is transformed incorrectly - detect and decode with other setting (e.g., no -raw)
+        whole_text, whole_text_with_newlines, was_unicode_decode_error, lines = load_cert_file(file_name_txt, 10)
+        change_detected = False
+        total_chars = 0
+        res = 0
+        for line in lines:
+            total_chars += len(line)
+            res += len([ele for ele in line if ele.isspace()])
+
+        if round(total_chars / 2.2) < res:
+            # too many spaces, convert without '-raw'
+            print('Converting ' + file_name + ' without -raw option')
+            options_not_raw = [option for option in options if option != '-raw']
+            proc_res = subprocess.run(["pdftotext", *options_not_raw, file_name], stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL)
+        #
+        # # Case 2: only subparts of the text with additional spaces, rest not (mixed) - detect for every line
+        # whole_text, whole_text_with_newlines, was_unicode_decode_error, lines = load_cert_file(file_name_txt)
+        # MIN_LINE_CHECK_LENGTH = 30
+        # sanitization_change_detected = False
+        # lines_sanitized = []
+        # for line in lines:
+        #     if len(line) >= MIN_LINE_CHECK_LENGTH:
+        #         if line[0] != ' ' and line[1] != ' ':
+        #             # not line with space after every character, continue
+        #             lines_sanitized.append(line)
+        #             continue
+        #         else:
+        #             start_index = 0 if line[0] == ' ' else 1
+        #         # start_index contains space
+        #         do_sanitize_line = True
+        #         for index in range(start_index, len(line) - 1, 2):
+        #             if line[index] != ' ':
+        #                 # not line with space after every character, continue
+        #                 lines_sanitized.append(line)
+        #                 do_sanitize_line = False
+        #                 break
+        #         if do_sanitize_line:
+        #             print(f'Going to sanitize line {line}')
+        #             line_sanitized = ''
+        #             start_index = 1 if line[0] == ' ' else 0
+        #             # start_index contains non-space character
+        #             for index in range(start_index, len(line), 2):
+        #                 line_sanitized += line[index]
+        #             print(f'   {line_sanitized}')
+        #             sanitization_change_detected = True
+        #             lines_sanitized.append(line_sanitized)
+        #     else:
+        #         lines_sanitized.append(line)
+        #
+
+        return proc_res
+
+    items = get_files_to_process(walk_dir, '.pdf')
+    print('\n\n***CHECK CONVERTED PDF FILES***')
+    results = []
+    with tqdm(total=len(items)) as progress:
+        for result in ThreadPool(num_threads).imap(check_pdf_file, items):
+            progress.update(1)
     return results
 
 
